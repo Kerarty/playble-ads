@@ -432,7 +432,19 @@ export async function startPlayable(options: StartOptions): Promise<void> {
 
   // Handles for the simulator's E2E run and for devtools poking.
   Object.assign(window as unknown as Record<string, unknown>, {
-    __playble: { destroy, playable, scene, input, director, measureDrift, boot: { target, variant } },
+    __playble: {
+      destroy,
+      playable,
+      scene,
+      input,
+      director,
+      measureDrift,
+      /** CSS pixels per design pixel, so a caller can reason in screen units. */
+      get viewportFitScale() {
+        return viewport.fitScale;
+      },
+      boot: { target, variant },
+    },
   });
 }
 

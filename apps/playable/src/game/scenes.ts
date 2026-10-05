@@ -253,14 +253,22 @@ export class Scene {
    * separate the last pair just as effectively.
    */
   refillIfStuck(random: () => number = Math.random): void {
-    const refill = this.board.ensurePlayable(random);
-    if (!refill) return;
+    // Can be two blocks: when no tier-0 is left on the board, one lone block
+    // would still have no partner to merge with.
+    const refills = this.board.ensurePlayable(random);
 
-    const view = this.pool.get();
-    const center = this.cellCenter(refill.col, refill.row);
-    view.show(refill, center.x, center.y - this.layout.cell / 2, this.layout.cell - GAP * 2);
-    view.popIn(this.tweens, 90);
-    this.views.set(refill.id, view);
+    for (const [index, refill] of refills.entries()) {
+      const view = this.pool.get();
+      const center = this.cellCenter(refill.col, refill.row);
+      view.show(
+        refill,
+        center.x,
+        center.y - this.layout.cell / 2,
+        this.layout.cell - GAP * 2,
+      );
+      view.popIn(this.tweens, 90 + index * 60);
+      this.views.set(refill.id, view);
+    }
   }
 
   /** Highlights the first mergeable pair and nudges one block toward the other. */

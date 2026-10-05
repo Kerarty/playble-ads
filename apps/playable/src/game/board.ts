@@ -67,7 +67,18 @@ export class Board {
     return row * COLS + col;
   }
 
+  /**
+   * Block at a cell, or null when the cell is empty or out of bounds.
+   *
+   * The bounds check is not optional. `Board.index` is plain arithmetic, so
+   * `get(4, 0)` used to wrap round to index 4 - the block directly below - and
+   * `get(-1, 1)` wrapped to index 3, the block above. A cell on the right edge
+   * therefore believed it had a neighbour on its left, and the refill rule
+   * placed blocks on the wrong side of the board. Nothing crashed; the board
+   * just stopped making sense, which is far harder to notice.
+   */
   get(col: number, row: number): Block | null {
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
     return this.cells[Board.index(col, row)] ?? null;
   }
 
@@ -214,8 +225,7 @@ export class Board {
   /**
    * Guarantees the player has something to do.
    *
-   * Spawns a tier-0 block next to another tier-0 when no merge is currently
-   * available, and returns it, or null if the board is full.
+   * Returns the blocks it added, or an empty array when nothing was needed.
    *
    * Why this exists rather than "refill on every merge": merging always consumes
    * a pair and produces one block, so the count shrinks by one each time. A
@@ -224,13 +234,64 @@ export class Board {
    * but unwinnable. The refill-on-merge rule avoids that only as long as a merge
    * has just happened; when merges run out, nothing triggers the next refill.
    *
-   * So the invariant is enforced explicitly: after any board change, either a
-   * merge is available or the board is full. That is what makes a 15 second
-   * playable never dead-end.
+   * The invariant is enforced explicitly: after any board change, either a merge
+   * is available or the board is full. That is what makes a 15 second playable
+   * never dead-end.
+   *
+   * Two cases, and the second one is the bug this comment exists for:
+   *
+   * 1. There is a tier-0 block with a free cell beside it. Spawn there; the
+   *    pair is immediately actionable.
+   * 2. There is no tier-0 left at all, because everything got merged upward.
+   *    The old version dropped a single tier-0 into an arbitrary free cell,
+   *    which is a lone block with no partner - still nothing to do. So a *pair*
+   *    is spawned into two adjacent free cells instead. A merge game has to hand
+   *    the player two of something.
    */
-  ensurePlayable(random: () => number = Math.random): Block | null {
-    if (hasAnyMerge(this)) return null;
-    return this.spawnRefill(0, random);
+  ensurePlayable(random: () => number = Math.random): Block[] {
+    if (hasAnyMerge(this)) return [];
+
+    const besideTier0 = this.cellsAdjacentToTier(0);
+    if (besideTier0.length > 0) {
+      const [pick] = shuffle(besideTier0, random);
+      const block = pick ? this.spawn(0, pick[0], pick[1]) : null;
+      return block ? [block] : [];
+    }
+
+    // No tier-0 anywhere: put down two of them side by side.
+    const pair = this.findFreeAdjacentPair(random);
+    if (!pair) return [];
+
+    const first = this.spawn(0, pair[0][0], pair[0][1]);
+    const second = this.spawn(0, pair[1][0], pair[1][1]);
+    return [first, second].filter((block): block is Block => block !== null);
+  }
+
+  /** Two free cells that share an edge, or null when there are none. */
+  private findFreeAdjacentPair(random: () => number): [[number, number], [number, number]] | null {
+    const candidates: Array<[[number, number], [number, number]]> = [];
+
+    for (let row = 0; row < ROWS; row += 1) {
+      for (let col = 0; col < COLS; col += 1) {
+        if (this.get(col, row)) continue;
+        // Only look right and down so each pair is considered once.
+        for (const [dc, dr] of [
+          [1, 0],
+          [0, 1],
+        ] as const) {
+          const other = this.get(col + dc, row + dr);
+          if (!other && col + dc < COLS && row + dr < ROWS) {
+            candidates.push([
+              [col, row],
+              [col + dc, row + dr],
+            ]);
+          }
+        }
+      }
+    }
+
+    const [pick] = shuffle(candidates, random);
+    return pick ?? null;
   }
 
   /** Free cells that share an edge with a block of `tier`. */

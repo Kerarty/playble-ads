@@ -301,7 +301,7 @@ describe('refill rule', () => {
 
   it('ensurePlayable adds nothing while a merge is available', () => {
     const board = fromPicture(['00..', '....', '....', '....', '....']);
-    expect(board.ensurePlayable(mulberry32(5))).toBeNull();
+    expect(board.ensurePlayable(mulberry32(5))).toEqual([]);
     expect(board.occupiedCount).toBe(2);
   });
 
@@ -309,8 +309,53 @@ describe('refill rule', () => {
     // Distinct tiers in a checkerboard: full, and nothing can merge.
     const board = fromPicture(['0101', '1010', '0101', '1010', '0101']);
     expect(hasAnyMerge(board)).toBe(false);
-    expect(board.ensurePlayable(mulberry32(2))).toBeNull();
+    expect(board.ensurePlayable(mulberry32(2))).toEqual([]);
     expect(evaluateBoard(board, MAX_TIER + 1 as Tier).outcome).toBe('stuck');
+  });
+
+  it('ensurePlayable spawns a pair when no tier-0 is left', () => {
+    // The bug this covers: everything merged upward, so there is no tier-0 for
+    // a new block to sit beside. Dropping a single block anywhere leaves a lone
+    // block with no partner and the board still dead.
+    const board = fromPicture(['1.2.', '2.1.', '....', '....', '....']);
+    expect(hasAnyMerge(board)).toBe(false);
+
+    const added = board.ensurePlayable(mulberry32(11));
+
+    expect(added).toHaveLength(2);
+    expect(added.every((block) => block.tier === 0)).toBe(true);
+    expect(hasAnyMerge(board)).toBe(true);
+  });
+
+  it('ensurePlayable spawns one block when a tier-0 partner is available', () => {
+    const board = fromPicture(['1...', '0...', '2.1.', '....', '....']);
+    expect(hasAnyMerge(board)).toBe(false);
+
+    const added = board.ensurePlayable(mulberry32(11));
+
+    expect(added).toHaveLength(1);
+    expect(hasAnyMerge(board)).toBe(true);
+  });
+
+  it('get returns null outside the grid instead of wrapping', () => {
+    // The bug: `Board.index` is plain arithmetic, so an out-of-range lookup
+    // wrapped onto another row and a cell on the right edge believed it had a
+    // neighbour on its left.
+    const board = fromPicture(['1...', '0...', '....', '....', '....']);
+    expect(board.get(4, 0)).toBeNull();
+    expect(board.get(-1, 1)).toBeNull();
+    expect(board.get(0, -1)).toBeNull();
+    expect(board.get(0, 5)).toBeNull();
+  });
+
+  it('only treats real edge-sharing neighbours as adjacent', () => {
+    const board = fromPicture(['0...', '....', '....', '....', '....']);
+    const neighbours = board.neighbours(board.get(0, 0)!);
+    // Right and down only, never wrapping to the far edge.
+    expect(neighbours).toEqual([
+      [1, 0],
+      [0, 1],
+    ]);
   });
 
   it('fills up eventually, so the stuck condition is still reachable', () => {
