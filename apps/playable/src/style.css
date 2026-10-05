@@ -51,12 +51,22 @@ body {
 
 /* --- copy overlay ----------------------------------------------------- */
 
+/*
+ * The hook copy lives in a band of its own, with a fixed height and clipped.
+ *
+ * A one-line title fit fine, but the copy wraps: "СОБЕРИ АЛМАЗ" broke onto two
+ * lines in a narrow slot and the subtitle landed on the first row of blocks.
+ * Sizing the type to fit a guessed line count is the wrong approach - the fix is
+ * to give the copy a band it cannot grow out of, and start the board below it.
+ */
 .playble-copy {
   position: absolute;
-  top: 7%;
+  top: 5%;
   left: 50%;
   transform: translateX(-50%);
   width: 92%;
+  height: 20%;
+  overflow: hidden;
   text-align: center;
   pointer-events: none;
   color: #fff;
@@ -69,16 +79,18 @@ body {
 
 .playble-copy__title {
   margin: 0;
-  font-size: 76px;
+  /* Sized so two lines plus the subtitle still fit the 20% band: two lines at
+   * 1.02 line height is 126px, the subtitle about 51px, and the band is 256px. */
+  font-size: 62px;
   font-weight: 800;
   letter-spacing: 0.01em;
-  line-height: 1.05;
+  line-height: 1.02;
   text-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
 }
 
 .playble-copy__sub {
   margin: 10px 0 0;
-  font-size: 38px;
+  font-size: 34px;
   font-weight: 600;
   color: #cfe0ff;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
@@ -194,10 +206,13 @@ body {
 
 /* --- debug ------------------------------------------------------------ */
 
+/* Bottom-left rather than top-left: the top-left corner is where the hook copy
+ * lives, and a dev panel sitting on top of it makes every debug screenshot
+ * unreadable. */
 .playble-debug {
   position: absolute;
   left: 16px;
-  top: 16px;
+  bottom: 16px;
   margin: 0;
   padding: 12px 16px;
   border-radius: 10px;

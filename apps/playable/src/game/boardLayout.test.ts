@@ -8,11 +8,12 @@ describe('computeLayout', () => {
     expect(layout.left).toBe(Math.round((720 - gridWidth) / 2));
   });
 
-  it('leaves room above the board for the hook copy', () => {
+  it('starts below the copy band', () => {
     const layout = computeLayout(720, 1280);
-    expect(layout.top).toBeGreaterThan(0);
-    // Copy sits in the top ~10%, so the board must start below it.
-    expect(layout.top).toBeGreaterThan(1280 * 0.1);
+    // The copy band runs from 5% to 25% of the design height and is clipped, so
+    // the board starting below it is what guarantees no overlap, however the
+    // title wraps.
+    expect(layout.top).toBeGreaterThan(1280 * 0.25);
   });
 
   it('keeps the grid inside the design box', () => {

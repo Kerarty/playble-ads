@@ -16,8 +16,15 @@ export const ROWS = 5;
 /** Board height as a fraction of the design height. */
 const BOARD_HEIGHT_RATIO = 0.55;
 
-/** Space reserved above the board for the hook copy. */
-const TOP_RATIO = 0.16;
+/**
+ * Space reserved above the board for the hook copy.
+ *
+ * The copy sits in a band from 5% to 25% of the design height and is clipped, so
+ * it cannot grow into the board however the title wraps. The board starts just
+ * below that band. Sizing this by eye instead is what let a two-line title land
+ * on the first row of blocks.
+ */
+const TOP_RATIO = 0.26;
 
 /** Gap between cells, in design pixels. */
 export const GAP = 10;
