@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref: nobody waits for a stale build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # The spec check runs inside this script, and it exits non-zero when a
+      # built artefact breaks a network's rules - so a green "build" here means
+      # the units are still uploadable, not merely that Vite exited.
+      - name: Build and validate artefacts
+        run: npm run build --workspace=apps/playable
+
+      - name: Upload playable artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: playable-artefacts
+          path: apps/playable/dist/*.html
+          retention-days: 7
