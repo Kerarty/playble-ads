@@ -194,7 +194,19 @@ function openAppStoreAdapter(id: 'tiktok' | 'pangle', name: string): Adapter {
 export const tiktokAdapter = (): Adapter => openAppStoreAdapter('tiktok', 'TikTok Ads');
 export const pangleAdapter = (): Adapter => openAppStoreAdapter('pangle', 'Pangle');
 
-/** Liftoff: `postMessage("download")`. Also the smallest size budget of the set. */
+/**
+ * Liftoff: `postMessage("download")`. Also the smallest size budget of the set.
+ *
+ * `detect()` deliberately returns false. Liftoff injects no global we can look
+ * for, so returning true would make this adapter claim every plain-HTML page and
+ * every page of a network whose SDK we failed to recognise. Guessing wrong here
+ * is worse than guessing nothing: the fallback path (`window.open`) reaches the
+ * store correctly, whereas claiming Liftoff and posting to a parent that is not
+ * listening does not.
+ *
+ * A Liftoff unit is therefore only used when it is pinned with
+ * `config.network`, which is what a QA deep link or the simulator does.
+ */
 export function liftoffAdapter(): Adapter {
   const profile: NetworkProfile = {
     id: 'liftoff',
@@ -209,7 +221,7 @@ export function liftoffAdapter(): Adapter {
 
   return {
     profile,
-    detect: () => true, // no detectable SDK; only reachable via config.network
+    detect: () => false,
     install() {
       const target = globalThis.parent as Window | null;
       if (target && (target as unknown) !== globalThis) {
