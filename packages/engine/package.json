@@ -1,0 +1,23 @@
+{
+  "name": "@playble/engine",
+  "version": "1.0.0",
+  "description": "PixiJS based rendering engine for playable ads: fixed timestep loop, pooling, tweens, adaptive quality.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@playble/core": "1.0.0",
+    "pixi.js": "^8.22.0"
+  }
+}
