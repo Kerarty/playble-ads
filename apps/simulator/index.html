@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Playble Ad Simulator</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10131a;
+        --panel: #181c26;
+        --line: #262c3a;
+        --text: #e6e9ef;
+        --muted: #98a2b8;
+        --accent: #66bb6a;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+
+      #app { max-width: 1180px; margin: 0 auto; padding: 28px 20px 48px; }
+
+      .header h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.01em; }
+      .subtitle { margin: 0; color: var(--muted); }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: end;
+        margin: 24px 0 12px;
+        padding: 16px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+      }
+
+      .field { display: flex; flex-direction: column; gap: 6px; }
+      .field-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+      .select, .button {
+        min-height: 38px;
+        padding: 0 12px;
+        background: #0d1017;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+      }
+
+      .button { cursor: pointer; background: var(--accent); color: #0b120c; border-color: transparent; font-weight: 600; }
+      .button:hover { filter: brightness(1.08); }
+
+      .note { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+
+      .main { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(300px, 420px); gap: 20px; align-items: start; }
+      @media (max-width: 880px) { .main { grid-template-columns: 1fr; } }
+
+      .stage { position: relative; }
+
+      .frame {
+        width: 100%;
+        aspect-ratio: 9 / 16;
+        max-height: 74vh;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #000;
+        display: block;
+      }
+
+      .chrome {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 8px 12px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #0b120c;
+        background: #7b8496;
+        border-radius: 0 0 11px 11px;
+        pointer-events: none;
+      }
+
+      .log { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+      .log h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+      .exit-badge {
+        margin: 0 0 12px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #0d1017;
+        border: 1px solid var(--line);
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .exit-badge--ok { border-color: var(--accent); color: var(--accent); }
+
+      .log-list { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
+      .log-list li { display: grid; grid-template-columns: 52px 1fr; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
+      .log-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .log-api { font-weight: 600; }
+      .log-detail { grid-column: 2; color: var(--muted); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

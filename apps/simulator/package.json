@@ -1,0 +1,19 @@
+{
+  "name": "@playble/simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs a built playable inside a fake ad network container, with a log of every SDK call.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --build && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@playble/core": "1.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.2"
+  }
+}
