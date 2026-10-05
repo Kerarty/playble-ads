@@ -1,0 +1,23 @@
+{
+  "name": "@playble/demo-playable",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Demo playable ad: a merge game built on @playble/engine.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build-and-check.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@playble/adapters": "1.0.0",
+    "@playble/core": "1.0.0",
+    "@playble/engine": "1.0.0",
+    "pixi.js": "^8.22.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.2",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
