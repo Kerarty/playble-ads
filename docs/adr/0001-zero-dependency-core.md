@@ -1,53 +1,53 @@
-# 1. Zero runtime dependencies in `@playble/core`
+# 1. Ноль runtime-зависимостей в `@playble/core`
 
-**Status:** accepted
+**Статус:** принято
 
-## Context
+## Контекст
 
-`@playble/core` is the part of the runtime that ships inside every playable
-unit: network detection, the event API, config validation, the dev guard. It is
-the module a reviewer reads first, and it is the module that has to keep working
-on the oldest Android WebView in the traffic.
+`@playble/core` — та часть рантайма, которая попадает в каждый отгружаемый
+юнит: детект сети, событийный API, валидация конфига, dev-guard. Это модуль,
+который ревьюер читает первым, и который обязан работать на самом старом
+Android WebView из трафика.
 
-The obvious approach is to pull in a validation library (Zod) and an event
-emitter (mitt, eventemitter3). Both are small, well-tested and would save a
-little code.
+Очевидный путь — взять библиотеку валидации (Zod) и эмиттер (mitt,
+eventemitter3). Обе маленькие, хорошо протестированные и сэкономят немного кода.
 
-Against that:
+Против этого:
 
-- Playable traffic arrives from a wider device range than a normal web product.
-  In-app WebViews on budget Androids are still a real share of impressions, and a
-  transitive dependency that uses a language feature those engines lack is a
-  black screen in a unit nobody is watching.
-- The unit is size-capped, and Meta's cap is 2 MB for the whole HTML file.
-  Every dependency is bytes competing with art and audio.
-- `core` has a genuinely tiny surface. Config validation is one object with ten
-  known keys. A general schema library is a large amount of machinery for a
-  problem this specific.
+- Трафик playable приходит с более широкого диапазона устройств, чем обычный
+  веб-продукт. In-app WebView на дешёвых Android всё ещё составляют реальную
+  долю показов, а транзитивная зависимость, использующая возможность языка,
+  которой в этих движках нет, — это чёрный экран в юните, за которым никто не
+  следит, пока его чинят.
+- Юнит ограничен по размеру, и лимит Meta — это 2 МБ на весь HTML-файл. Каждая
+  зависимость отнимает байты у графики и звука.
+- У `core` действительно крошечная поверхность. Валидация конфига — это один
+  объект с десятью известными ключами. Общая библиотека схем — это много
+  машинерии для вполне конкретной задачи.
 
-## Decision
+## Решение
 
-No runtime dependencies. Validation is hand-written in `src/config.ts` (~60
-lines), the event bus is `src/emitter.ts`, and the external-request guard is
-`src/dev.ts`.
+Ноль runtime-зависимостей. Валидация написана руками в `src/config.ts` (~60
+строк), шина событий — `src/emitter.ts`, guard внешних запросов — `src/dev.ts`.
 
-`@playble/adapters` and `@playble/engine` do depend on things — the adapters
-package has no dependencies, the engine depends on PixiJS. The line is drawn at
-the core, because that is the package with the widest reach.
+`@playble/adapters` и `@playble/engine` зависят от чего-то: пакет адаптеров
+зависимостей не имеет, движок зависит от PixiJS. Граница проходит по core,
+потому что это пакет с самым широким охватом.
 
-## Consequences
+## Последствия
 
-**Good.** The whole core is auditable in one sitting, and there is no
-transitive dependency to track for CVEs in the shipped artefact. Build output is
-deterministic: the same source produces the same bytes.
+**Хорошо.** Весь core читается за один присест, и в отгружаемом артефакте нет
+транзитивных зависимостей, за которыми нужно следить ради CVE. Сборка
+детерминирована: одни и те же исходники дают одни и те же байты.
 
-**Bad, and worth being explicit about.** Hand-written validation can be wrong in
-ways a battle-tested library is not. The mitigation is that `config.ts` validates
-ten known keys against fixed ranges and nothing else — there is no schema
-evolution to get wrong — and the tests assert the failure messages, not just that
-it throws. If the config grows into something with nested rules or user-supplied
-schemas, this decision should be revisited rather than defended.
+**Плохо, и об этом стоит сказать прямо.** Написанная руками валидация может
+ошибиться так, как не ошибётся battle-tested библиотека. Что снижает риск:
+`config.ts` проверяет десять известных ключей по фиксированным диапазонам и
+больше ничего — эволюции схемы, в которой можно ошибиться, тут нет; а тесты
+проверяют тексты ошибок, а не только факт throw. Если конфиг вырастет во что-то
+с вложенными правилами или пользовательскими схемами, это решение следует
+пересмотреть, а не защищать.
 
-Related: [the Meta MRAID constraint](0003-meta-forbids-mraid.md) is what makes
-dependency boundaries matter so much here — it turns "this package is imported"
-into "this code must not exist in this file".
+Связанное: [ограничение Meta по MRAID](0003-meta-forbids-mraid.md) — это то, что
+делает границы зависимостей такими важными. Оно превращает «этот пакет
+импортирован» в «этот код не должен существовать в этом файле».

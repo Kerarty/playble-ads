@@ -1,120 +1,120 @@
-# Playable design
+# Дизайн playable
 
-The creative side: what the numbers say about playable ads, and how
-`apps/playable` answers them. This is the part of the project where the
-engineering is easy and the decisions are not.
+Творческая часть проекта: что цифры говорят о playable-рекламе и как на них
+отвечает `apps/playable`. Это та часть, где инженерная работа проста, а решения
+— нет.
 
-## The shape of a winning playable
+## Скелет выигрышного креатива
 
-Strip a high-performing unit down and the same skeleton is there: a **hook** in
-the first seconds, a **loop** of ten to twenty seconds, an **end card**. The
-failure modes map onto the beats one to one:
+У любого результативного юнита одна и та же конструкция: **хук** в первые секунды,
+**луп** длиной десять-двадцать секунд, **энд-кард**. Формы провала ложатся на
+биты один в один:
 
-- a hook that explains too much
-- a loop harder than the real game
-- an end card that arrives before the player felt anything
+- хук, который объясняет слишком много;
+- луп сложнее настоящей игры;
+- энд-кард, который приходит раньше, чем игрок что-то почувствовал.
 
-An analysis of 212 campaigns across 47 studios put the numbers on it. These are
-the constraints the demo playable is built against, and each one is visible
-somewhere in the code:
+Разбор 212 кампаний от 47 студий даёт числа. Ниже — ограничения, под которые
+собран демо-креатив, и каждое из них видно где-то в коде:
 
-| Constraint | Number | Where it shows up |
+| Ограничение | Цифра | Где это в коде |
 |---|---|---|
-| Interactive within 3 seconds | +67% engagement vs a static intro | Board loads at `at: 0`; no tap-to-start |
-| One action, one outcome | 2.8× vs multi-step | Drag a block onto its twin. Tap works too, same gesture |
-| Visual feedback under 200ms | +44% re-engagement | `BlockView.press()` scales up on pointerdown |
-| CTA within 15 seconds | +34% installs at 15s | CTA beat at `at: 11`, gated on win |
-| Portrait | 2.1× completion | Design box is 720×1280 |
-| Under 2.5 MB | 47% abandon past 3s load | 593 KB; the cap is enforced per build |
+| Интерактив в первые 3 секунды | +67% вовлечённости против статичного интро | Доска грузится на `at: 0`; никакого «tap to start» |
+| Одно действие, один исход | 2.8× против многошаговых | Тащим блок на близнеца. Тап делает то же самое |
+| Обратная связь быстрее 200 мс | +44% возврата | `BlockView.press()` увеличивает блок на `pointerdown` |
+| CTA в пределах 15 секунд | +34% установок на 15-й секунде | Бит CTA на `at: 11`, под гейтом победы |
+| Портрет | 2.1× завершений | Дизайн-бокс 720×1280 |
+| Меньше 2.5 МБ | 47% уходят, если грузится дольше 3 секунд | 596 КБ; лимит проверяется на каждую сборку |
 
-Interaction rate for a simple tap mechanic benchmarks at 18–35%, and around 60%
-of interactors finish the round. The simulator's debug overlay shows the local
-version of those numbers so the funnel is inspectable during development.
+Бенчмарк вовлечённости для простой тап-механики — 18–35%, и около 60%
+взаимодействовавших доходят до конца раунда. Отладочный оверлей в симуляторе
+показывает локальную версию этих чисел, чтобы воронка была видна при разработке.
 
-## Why merge
+## Почему merge
 
-Playables work when the fun is legible in one gesture. Puzzle, merge and casual
-mechanics qualify because the core loop *is* the ad; deeper genres have to reduce
-themselves to a single satisfying decision or video is the better format.
+Playable работает, когда fun читается одним жестом. Пазл, merge и казуальные
+жанры подходят, потому что ядро лупа и есть реклама; более глубокие жанры
+вынуждены свести себя к одному насыщенному решению, иначе формат видео лучше.
 
-Merge specifically:
+Merge в частности:
 
-- reads in one gesture, with no instructions;
-- has a lot of juice potential per asset — squash, particles, a rising pitch;
-- has enough logic to be worth engineering: pools, resolution rules, solvability;
-- is a real game, so the playable is not lying to the player. That last one
-  matters commercially: a unit that is more fun than the product inflates taps
-  and then collapses D1 retention.
+- читается одним жестом, без инструкций;
+- даёт много «сока» на минимум ассетов: squash, частицы, восходящая питч-лестница;
+- содержит достаточно логики, чтобы было что инженерить: пул, разрешение
+  слияний, решаемость;
+- это настоящая игра, то есть playable не врёт зрителю. Последнее важно
+  коммерчески: юнит, который интереснее продукта, накручивает тапы, а потом
+  рушит D1 retention.
 
-## No fail state
+## Проигрыша нет
 
-There is no lose condition in the first fifteen seconds. A dropped block always
-lands — the snap radius is deliberately larger than a cell — and a player who gets
-stuck restarts the level rather than seeing a failure screen.
+Проигрышного состояния в первые пятнадцать секундах не существует. Уронённый
+блок всегда приземляется — радиус притяжения намеренно больше клетки, — и если
+игрок застрял, уровень перезапускается, а не показывается экран поражения.
 
-Punishment in an ad costs install intent. The player leaves with a win or with
-nothing, never with a "you lost" and a decision to make about it.
+Наказание в рекламе стоит install-интента. Зритель уходит либо с победой, либо
+вообще ни с чем, но никогда с «ты проиграл» и необходимостью что-то решать.
 
-## The beat sheet
+## Бит-карта
 
-Roughly 13.5 seconds, and the timings are the ones above rather than taste:
+Примерно 13.5 секунды, и тайминги взяты из цифр выше, а не из вкуса:
 
-| Time | Beat |
+| Время | Бит |
 |---|---|
-| 0.0–0.8 | Copy hook, board already live and interactive |
-| 0.8–2.0 | Tutorial as a moving finger, not text — one gesture, no sentence |
-| 2.0–3.5 | First merge: the "yes, this is fun" moment |
-| 3.5–7.0 | Three more merges at increasing scale, hints gone |
-| 7.0–10.5 | Final merge, celebration |
-| 10.5–12.0 | End card, install button pulsing in the lower third |
-| 12.0–13.5 | Button keeps pulsing. No countdown, no pressure |
+| 0.0–0.8 | Текст-ховк, доска уже живая и интерактивная |
+| 0.8–2.0 | Обучение в виде движущегося пальца, а не текста — один жест вместо предложения |
+| 2.0–3.5 | Первое слияние: момент «да, это приятно» |
+| 3.5–7.0 | Ещё три слияния с нарастающим масштабом, подсказки исчезают |
+| 7.0–10.5 | Финальное слияние, празднование |
+| 10.5–12.0 | Энд-кард, кнопка установки пульсирует в нижней трети |
+| 12.0–13.5 | Кнопка продолжает пульсировать. Никакого отсчёта и давления |
 
-All of it is `src/game/script.ts`, as data.
+Всё это — `src/game/script.ts`, в виде данных.
 
-## Levels as pictures
+## Уровни как картинки
 
 ```ts
 { name: 'warm-up', layout: ['00..', '....', '0...', '....', '....'], goal: 1 }
 ```
 
-Layouts are chosen rather than random, and the tests enforce two properties that
-are easy to break by accident:
+Раскладки выбраны, а не случайны, и два свойства проверяются тестами, потому что
+легко сломать случайной правкой:
 
-- every level starts with an adjacent same-tier pair, so the player always has
-  something to do on the first gesture;
-- every level is winnable by merging alone, so the outcome does not depend on a
-  refill that might not come.
+- каждый уровень начинается с соседней пары одного тира, так что у игрока всегда
+  есть что делать первым жестом;
+- каждый уровень выигрывается одними слияниями, так что исход не зависит от
+  случайного пополнения, которого может не быть.
 
-## Two hook variants
+## Два варианта хука
 
-The first interaction is the highest-leverage variable in a playable, so there are
-two openings and a stated hypothesis for each:
+Первое взаимодействие — переменная с наибольшим влиянием в playable, поэтому
+вариантов два и у каждого записана гипотеза:
 
-- **A** — "collect the diamond", an instruction. Expected: high interaction rate,
-  but the player reads.
-- **B** — "one tap", an outcome. Expected: faster engagement, less explanation.
+- **A** — «собери алмаз», инструкция. Ожидание: высокая вовлечённость, но игрок
+  читает.
+- **B** — «одно касание», результат. Ожидание: более быстрое вовлечение, меньше
+  объяснений.
 
-They differ only in the opening beats; the tail is identical, so a difference in
-result is attributable to the hook rather than to two different ads.
+Они отличаются только открывающими битами; хвост идентичен, поэтому разница в
+результате объясняется хуком, а не сравнением двух разных реклам.
 
-## Audio
+## Звук
 
-Muted until the first gesture, because mobile autoplay policy requires it and
-some in-app WebViews log a violation. The `AudioContext` is not even constructed
-before that point.
+До первого жеста тишина: этого требует политика автозапуска на мобильных, а
+часть in-app WebView считает нарушением даже создание `AudioContext`.
 
-The merge sound climbs a pitch ladder, so audio tracks progress the way the
-visuals do and the last merge before the CTA sounds like a win. One loop, four
-effects, mono at a speech-grade bitrate: a phone speaker cannot tell the
-difference, and the saved bytes go to art.
+Звук слияния поднимается по питч-лестнице, так что звук отслеживает прогресс так
+же, как картинка, и последнее слияние перед CTA звучит как победа. Одна петля,
+четыре эффекта, моно на речевом битрейте: телефонный динамик не отличает, а
+сэкономленные байты уходят в графику.
 
-TikTok and Pangle are sound-on placements, so their profile sets `defaultAudio:
-'on'`.
+TikTok и Pangle — это звуковые плейсменты, поэтому у их профиля
+`defaultAudio: 'on'`.
 
-## What is not automated
+## Что не автоматизировано
 
-Whether this creative is any good. Not the timing, not the mechanic — the idea
-that it would install. That needs real impressions against real networks, and a
-demo playable has none of those. Everything this project automates is the part
-that can be verified locally; the rest is a claim, and `docs/playable-design.md`
-is where the claims live rather than being dressed up as results.
+Хорош ли этот креатив. Не тайминг и не механика — идея, что он что-то установит.
+Для этого нужны настоящие показы против настоящих сетей, а у демо-креатива их нет.
+Всё, что автоматизировано здесь, — это часть, которую можно проверить локально;
+остальное остаётся утверждением, и `docs/playable-design.md` существует именно
+для того, чтобы утверждения не выдавались за результаты.

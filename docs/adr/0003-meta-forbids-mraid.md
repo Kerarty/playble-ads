@@ -1,63 +1,63 @@
-# 3. Meta forbids MRAID, so the MRAID code must not exist
+# 3. Meta запрещает MRAID, значит кода MRAID быть не должно
 
-**Status:** accepted
+**Статус:** принято
 
-## Context
+## Контекст
 
-Meta's playable spec forbids MRAID — not at runtime, but anywhere in the
-delivered file. Other networks require it: AppLovin, Unity, IronSource, Vungle and
-Chartboost all expect `mraid.open()`.
+Спецификация Meta для playable запрещает MRAID — не на рантайме, а где-либо в
+передаваемом файле. Остальные сети его требуют: AppLovin, Unity, IronSource,
+Vungle и Chartboost ждут `mraid.open()`.
 
-So one artefact cannot serve both. The question is how to split it.
+Значит один артефакт не может обслуживать и то и другое. Вопрос в том, как его
+разделить.
 
-## Options
+## Варианты
 
-**One bundle, runtime flag.** Build everything, choose the adapter at startup.
-Fails: the MRAID adapter is in the file, and the string "mraid" appears in it.
-Meta rejects on the file, not on execution.
+**Одна сборка, переключатель на рантайме.** Собираем всё, выбираем адаптер при
+старте. Не работает: адаптер MRAID остаётся в файле, и строка «mraid» в нём
+есть. Meta смотрит на файл, а не на выполнение.
 
-**One bundle, tree shaking with a constant.** Build with
-`PLAYBLE_TARGET=meta` and hope rollup drops the unused branch. Attempted, and it
-does not work — a switch on a build-time constant still leaves every branch
-reachable to the bundler, and `@playble/adapters`'s index re-exports the MRAID
-factory. The Meta bundle still contained the MRAID code. `sideEffects: false`
-helped with other tree shaking but not this.
+**Одна сборка, tree shaking по константе.** Собираем с
+`PLAYBLE_TARGET=meta` и надеемся, что rollup выбросит неиспользуемую ветку.
+Пробовалось — не работает: switch по build-time константе всё ещё оставляет все
+ветки достижимыми для бандлера, а `@playble/adapters` реэкспортирует фабрику
+MRAID из своего индекса. Meta-сборка всё равно содержала код MRAID.
+`sideEffects: false` помог с остальным tree shaking, но не с этим.
 
-**One entry per target.** Each entry imports only the adapters it needs.
+**По точке входа на цель.** Каждая точка входа импортирует только нужные адаптеры.
 
-## Decision
+## Решение
 
-Three entries, three bundles:
+Три точки входа, три сборки:
 
-| Entry | Adapters |
+| Точка входа | Адаптеры |
 |---|---|
-| `index.html` | all — development and the simulator |
+| `index.html` | все — разработка и симулятор |
 | `meta.html` | Meta, Moloco |
 | `mraid.html` | AppLovin, Unity, IronSource, Vungle |
 
-`src/targets/meta.ts` does not import the MRAID module at all, so the module
-graph has no path to it.
+`src/targets/meta.ts` вообще не импортирует модуль MRAID, так что графу модулей
+нечего сохранять.
 
-The bundle count is not the important part — the check is. `tools/spec-check`
-fails the build if a MRAID call or a read of the `mraid` global appears in a Meta
-artefact. That turns this from "we were careful" into "a regression fails CI",
-which is the only version of this decision that survives the next person editing
-the code.
+Количество сборок — не главное; главное — проверка. `tools/spec-check` роняет
+сборку, если в артефакте, объявленном под Meta, встретится вызов MRAID или чтение
+глобала `mraid`. Это превращает решение из «мы были аккуратны» в «регрессия роняет
+CI» — единственную версию, которая переживёт правку кода следующим человеком.
 
-The check deliberately does **not** flag our own `requiresMraid` profile field,
-which appears in every bundle. Flagging it would have made every build fail and
-trained us to ignore the output.
+Проверка намеренно **не** реагирует на собственное поле профиля `requiresMraid`,
+которое есть в каждой сборке. Если бы реагировала, падала бы каждая сборка, и нас
+научили бы игнорировать вывод.
 
-## Consequences
+## Последствия
 
-**Good.** Each artefact is exactly what one network family accepts. The Meta
-bundle is uploadable. The rule is enforced, not remembered.
+**Хорошо.** Каждый артефакт — ровно то, что принимает одно семейство сетей.
+Meta-сборка пригодна к загрузке. Правило соблюдается, а не помнится.
 
-**Bad.** Three files to build and to keep in step, and the simulator has to pick
-the right one per network — running the Meta build inside a MRAID container would
-correctly fail to detect a bridge and fall back. That is why
-`apps/simulator/src/main.ts` has an explicit build-per-network map.
+**Плохо.** Три файла, которые надо собирать и держать в согласии, и симулятор
+обязан выбирать правильный под сеть: Meta-сборка внутри MRAID-контейнера
+корректно не найдёт мост и откатится на фолбэк. Именно поэтому в
+`apps/simulator/src/main.ts` есть явная карта «сеть → сборка».
 
-Three `vite build` invocations instead of one is a build-time cost of a few
-seconds, caused by the single-file plugin disabling code splitting, which Vite
-does not allow alongside several inputs.
+Три вызова `vite build` вместо одного — это несколько секунд сборки, вызванных
+тем, что плагин single-file отключает code splitting, который Vite не
+комбинирует с несколькими входами.

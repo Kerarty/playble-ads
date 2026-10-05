@@ -29,9 +29,9 @@ export type SimulatedNetwork =
 export interface NetworkSimulation {
   id: SimulatedNetwork;
   label: string;
-  /** Pixels of chrome the network draws over the bottom of the unit. */
+  /** Сколько пикселей хрома сеть рисует поверх нижней части юнита. */
   bottomChrome: number;
-  /** How the SDK exits to the store. */
+  /** Как SDK уходит в магазин. */
   exit:
     | 'mraid.open'
     | 'onCTAClick'
@@ -53,52 +53,52 @@ export interface NetworkSimulation {
 export const SIMULATIONS: Record<SimulatedNetwork, NetworkSimulation> = {
   'mraid-generic': {
     id: 'mraid-generic',
-    label: 'MRAID container (AppLovin / Unity / IronSource)',
+    label: 'MRAID-контейнер (AppLovin / Unity / IronSource)',
     bottomChrome: 80,
     exit: 'mraid.open',
-    note: 'MRAID is required here. The container owns the close and store buttons.',
+    note: 'Здесь MRAID обязателен. Кнопки закрытия и магазина принадлежат контейнеру.',
   },
   meta: {
     id: 'meta',
     label: 'Meta (Facebook / Instagram)',
     bottomChrome: 120,
     exit: 'onCTAClick',
-    note: 'MRAID is forbidden in the file. No logo on the first frame.',
+    note: 'MRAID в файле запрещён. На первом кадре не должно быть логотипа.',
   },
   google: {
     id: 'google',
     label: 'Google Ads / AdMob',
     bottomChrome: 100,
     exit: 'ExitApi.exit',
-    note: 'No MRAID. Exits through ExitApi.',
+    note: 'Без MRAID. Выход через ExitApi.',
   },
   mintegral: {
     id: 'mintegral',
     label: 'Mintegral',
     bottomChrome: 90,
     exit: 'window.install',
-    note: 'Calls a global window.install().',
+    note: 'Зовёт глобальную window.install().',
   },
   tiktok: {
     id: 'tiktok',
-    label: 'TikTok Ads (sound-on)',
+    label: 'TikTok Ads (со звуком)',
     bottomChrome: 110,
     exit: 'window.openAppStore',
-    note: 'Reward placements expect sound from the first frame.',
+    note: 'Наградыные плейсменты ожидают звук с первого кадра.',
   },
   liftoff: {
     id: 'liftoff',
     label: 'Liftoff',
     bottomChrome: 80,
     exit: 'postMessage',
-    note: 'postMessage("download") to the parent. Tightest size budget.',
+    note: 'postMessage("download") родителю. Самый жёсткий лимит по размеру.',
   },
   plain: {
     id: 'plain',
-    label: 'Plain HTML (no network)',
+    label: 'Обычный HTML (без сети)',
     bottomChrome: 0,
     exit: 'window.open',
-    note: 'No SDK at all. The runtime must degrade to a normal link.',
+    note: 'SDK нет вообще. Рантайм обязан откатиться на обычную ссылку.',
   },
 };
 
@@ -145,7 +145,7 @@ export function createBridge(
 
   const markExit = (api: string): void => {
     exit = api;
-    log(api, 'the playable asked to open the store');
+    log(api, 'playable попросил открыть магазин');
   };
 
   return {
@@ -156,7 +156,7 @@ export function createBridge(
         case 'mraid.open': {
           win['mraid'] = {
             open: () => markExit('mraid.open'),
-            close: () => log('mraid.close', 'container close requested'),
+            close: () => log('mraid.close', 'контейнер запросил закрытие'),
             getVersion: () => '3.0',
             isAvailable: () => true,
             setVolume: (v: number) => log('mraid.setVolume', String(v)),
@@ -216,7 +216,7 @@ export function createBridge(
           break;
       }
 
-      log('bridge', `simulating ${simulation.label}`);
+      log('bridge', `симулируем ${simulation.label}`);
     },
 
     log,

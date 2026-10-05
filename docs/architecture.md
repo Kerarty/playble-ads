@@ -1,157 +1,165 @@
-# Architecture
+# Архитектура
 
-Four packages, one dependency direction: `core` knows nothing about `adapters`,
-`adapters` know nothing about `engine`, and the game knows nothing about any of
-them beyond one object it was handed.
+Четыре пакета и одно направление зависимостей: `core` ничего не знает про
+`adapters`, `adapters` ничего не знают про `engine`, а игра не знает ни о ком из
+них, кроме одного переданного ей объекта.
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  apps/playable          the game (merge)             │
-│  ├─ src/game/     board · scenes · input · script    │
-│  └─ src/ui/       copy · CTA · debug                 │
+│  apps/playable          игра (merge)                  │
+│  ├─ src/game/     board · scenes · input · script     │
+│  └─ src/ui/       copy · CTA · debug                  │
 └───────────────┬──────────────────────────────────────┘
-                │  one object: Playable
+                │  один объект: Playable
 ┌───────────────▼──────────────────────────────────────┐
-│  @playble/core          no dependencies, no renderer  │
-│  runtime · config · emitter · registry · dev guards   │
+│  @playble/core          нет зависимостей, нет рендерера│
+│  рантайм · config · emitter · registry · dev-guard    │
 └───────────────┬──────────────────────────────────────┘
-                │  Adapter interface
+                │  интерфейс Adapter
 ┌───────────────▼──────────────┐   ┌───────────────────┐
 │  @playble/adapters          │   │  @playble/engine   │
 │  mraid · meta · google · …  │   │  loop · tweens ·   │
-│  one module per network     │   │  pool · quality    │
+│  по модулю на сеть          │   │  pool · quality    │
 └─────────────────────────────┘   └───────────────────┘
 ```
 
-## Why the game never imports a network SDK
+## Почему игра никогда не импортирует SDK сети
 
-A game that calls `mraid.open()` directly cannot be tested outside an AppLovin
-container, cannot be reused on Meta, and has to be edited every time a network
-changes its API. Routing installs through one function is what makes the same
-build shippable to eleven networks and testable on a laptop.
+Игра, которая напрямую зовёт `mraid.open()`, не тестируется вне контейнера
+AppLovin, не переиспользуется на Meta и требует правок при каждом изменении API
+сети. Проведение установки через одну функцию — это то, что позволяет отгрузить
+одну и ту же сборку в одиннадцать сетей и тестировать на ноутбуке.
 
-The interface is two methods:
+Интерфейс состоит из двух методов:
 
 ```ts
 interface Adapter {
   readonly profile: NetworkProfile;
-  detect(env: AdapterEnv): boolean;   // is this network present?
-  install(env: AdapterEnv): ExitMethod; // send the user to the store
+  detect(env: AdapterEnv): boolean;      // есть ли эта сеть?
+  install(env: AdapterEnv): ExitMethod;   // увести пользователя в магазин
 }
 ```
 
-Everything else — size caps, safe areas, audio policy — travels as data on
-`NetworkProfile`, so adding a network means adding a module, not editing the
-runtime.
+Всё остальное — лимиты размера, безопасные зоны, политика звука — едет данными в
+`NetworkProfile`, поэтому добавление сети означает добавление модуля, а не
+правку рантайма.
 
-## Detection is not identification
+## Детект — это не идентификация
 
-`AdapterRegistry.resolve()` finds the first adapter whose `detect()` returns
-true. That is enough for Meta, Google, Mintegral, TikTok and Pangle, each of
-which injects a distinct global.
+`AdapterRegistry.resolve()` берёт первый адаптер, чей `detect()` вернул `true`.
+Для Meta, Google, Mintegral, TikTok и Pangle этого достаточно: у каждой свой
+уникальный глобал.
 
-It is **not** enough for the MRAID networks. AppLovin, Unity, IronSource and
-Vungle all expose `mraid` and essentially nothing else; a unit served in any of
-them is indistinguishable from the others by feature detection. Two consequences,
-both handled explicitly rather than hidden:
+Для MRAID-сетей этого **не** достаточно. AppLovin, Unity, IronSource и Vungle
+дают MRAID и по сути ничего больше; юнит, отданный любой из них, неотличим от
+остальных по feature detection. Два следствия, оба обработаны явно, а не
+спрятаны:
 
-- a unit that must be identified precisely is pinned with `config.network`, which
-  is also what the simulator and QA deep links use;
-- every one of those networks wants `mraid.open()` anyway, so a wrong guess costs
-  attribution accuracy and nothing else.
+- юнит, который нужно опознать точно, закрепляется через `config.network` — этим
+  же пользуются симулятор и QA-ссылки;
+- все эти сети в любом случае хотят `mraid.open()`, так что ошибка в угадывании
+  стоит только точности атрибуции и ничего больше.
 
-Network names in `NetworkProfile` are the spec table from the publishers, and the
-caps are re-checked against the spec checker rather than trusted from memory.
+Названия сетей в `NetworkProfile` взяты из документации самих сетей, а лимиты
+перепроверяются проверкой спецификаций, а не берутся из памяти.
 
-## Why three builds of the game
+## Почему три сборки игры
 
-Meta rejects a playable whose file mentions MRAID anywhere — including a code
-path that never executes. `sideEffects: false` and a switch statement are not
-enough, because the MRAID adapter still ends up in the module graph.
+Meta отклоняет playable, в файле которого где-либо упоминается MRAID — включая
+ветку кода, которая никогда не выполняется. `sideEffects: false` и
+переключатель по константе недостаточны: адаптер MRAID всё равно попадает в граф
+модулей.
 
-So the adapter sets are separate modules with separate entry points:
+Поэтому наборы адаптеров — это отдельные модули с отдельными точками входа:
 
-| Entry | Adapters | For |
+| Точка входа | Адаптеры | Для чего |
 |---|---|---|
-| `index.html` | everything | development, the simulator |
-| `meta.html` | Meta, Moloco | Meta uploads |
-| `mraid.html` | AppLovin, Unity, IronSource, Vungle | MRAID uploads |
+| `index.html` | все | разработка, симулятор |
+| `meta.html` | Meta, Moloco | загрузка в Meta |
+| `mraid.html` | AppLovin, Unity, IronSource, Vungle | загрузка в MRAID-сети |
 
-`src/targets/meta.ts` does not import the MRAID module, so the bundler has
-nothing to keep, and `tools/spec-check` fails the build if the string ever comes
-back. That last part is what makes it a decision rather than an accident.
+`src/targets/meta.ts` вообще не импортирует модуль MRAID, поэтому графу модулей
+нечего сохранять. А `tools/spec-check` роняет сборку, если строка всё-таки
+вернётся. Именно эта проверка превращает решение из «мы были аккуратны» в
+«регрессия роняет CI» — единственную версию, которая переживёт следующего
+человека, редактирующего код.
 
-## The game is split from the renderer
+Проверка намеренно **не** ругается на собственное поле `requiresMraid` в профиле,
+которое есть в каждой сборке. Если бы ругалась, падала бы любая сборка, и нас
+научили бы игнорировать её вывод.
 
-`src/game/board.ts` holds merge rules, grid layout, level definitions and win
-conditions. It imports nothing from Pixi and nothing from the DOM. That is why
-the rules most likely to be wrong are testable in plain Node, and why "does it
-behave the same on a 30Hz phone" is a separate question from "does it look right".
+## Игра отделена от рендерера
 
-Rendering, input handling, audio and the script live beside it and own their own
-problems: pooling and tweening in `scenes.ts`, snap-to-target behaviour in
-`input.ts`, autoplay-policy compliance in `audio.ts`.
+`src/game/board.ts` содержит правила слияния, сетку, определения уровней и
+условия победы. Он не импортирует ничего из Pixi и ничего из DOM. Благодаря
+этому правила, которые реально могут сломаться, тестируются в обычном Node, а
+вопрос «одинаково ли это работает на 30 Гц» отделён от «а правильно ли это
+выглядит».
 
-## The timeline is data
+Рендеринг, ввод, звук и сценарий живут рядом и занимаются своими задачами:
+пулинг и твины в `scenes.ts`, поведение притяжения к цели в `input.ts`,
+соблюдение политики автозапуска в `audio.ts`.
 
-`src/game/script.ts` is a list of beats with timestamps, not a chain of timers:
+## Таймлайн — это данные
+
+`src/game/script.ts` — список битов с таймкодами, а не цепочка таймеров:
 
 ```ts
 { id: 'cta', at: 11, gate: 'win', action: { type: 'show-cta' } }
 ```
 
-Three things fall out of that. The simulator can display it, the E2E run can
-assert against it, and an A/B variant is a different entry in a list rather than a
-forked code path. `director.ts` runs it and knows nothing about the game.
+Отсюда три вещи. Симулятор может это показать, E2E-прогон может на этом
+проверяться, а A/B-вариант — это другая запись в списке, а не форк кода.
+`director.ts` исполняет список и ничего не знает об игре.
 
-`gate: 'win'` is what keeps the CTA from appearing before the player has felt
-anything — the failure mode that converts like an interruption rather than a
-reward.
+`gate: 'win'` не даёт кнопке появиться раньше, чем игрок что-то почувствовал, —
+это тот самый провал, который конвертирует как прерывание, а не как награда.
 
-## Frame-rate independence
+## Независимость от частоты кадров
 
-`engine/src/loop.ts` runs the simulation in fixed 16.67ms steps and renders once
-per animation frame with an interpolation alpha. A playable has to behave
-identically on a 60Hz and a 30Hz device, otherwise what QA tested is not what
-users see.
+`engine/src/loop.ts` гоняет симуляцию фиксированными шагами по 16.67 мс и
+отрисовывает один раз за кадр с коэффициентом интерполяции. Playable обязан
+вести себя одинаково на 60 и 30 Гц, иначе то, что проверило QA, не то, что
+увидит пользователь.
 
-Two details that only show up under load: catch-up is capped at five steps so a
-background-tab stall does not trigger a freeze-and-repeat, and the step
-comparison carries an epsilon because `1000/60` does not decompose cleanly into
-three float subtractions.
+Две детали, которые видны только под нагрузкой: догоняющие шаги ограничены
+пятью, чтобы после сворачивания вкладки не началась новая заморозка; и в
+сравнении шага есть эпсилон, потому что `1000/60` не разлагается на три
+вычитания float без остатка.
 
-## Adaptive quality
+## Адаптивное качество
 
-`engine/src/quality.ts` watches the measured frame rate and steps resolution and
-particle count down to hold the target, then back up when there is headroom.
-Downgrading needs three consecutive bad samples, upgrading needs twelve: a
-playable is fifteen seconds long, and a controller that chases every hitch makes
-the picture worse rather than better.
+`engine/src/quality.ts` следит за измеренным fps и ступенчато снижает разрешение
+и число частиц, удерживая цель, а затем возвращает качество при запасе. Снижение
+требует трёх плохих замеров подряд, повышение — двенадцати: playable длится
+пятнадцать секунд, и контроллер, догоняющий каждый микрофриз, делает картинку
+хуже, а не лучше.
 
-## Allocation
+## Выделение памяти
 
-Blocks, particles and floating labels come from `Pool`. Steady-state gameplay
-allocates nothing, which is not premature optimisation — a GC pause during a merge
-animation is a stutter the viewer blames on the ad.
+Блоки, частицы и всплывающие подписи берутся из `Pool`. В установившемся
+геймплее ничего не аллоцируется, и это не преждевременная оптимизация: пауза
+сборщика мусора во время анимации слияния — это подвисание, которое зритель
+списывает на рекламу.
 
-## The dev guard
+## Dev-guard
 
-Playable ads may not make network requests. `core/src/dev.ts` wraps `fetch`,
-`XMLHttpRequest`, `Image.src`, `sendBeacon`, `WebSocket` and `EventSource` when
-`debug: true`, and reports a violation through the `error` event. A stray `fetch`
-would otherwise stay invisible until upload review.
+Playable не имеет права делать сетевые запросы. `core/src/dev.ts` при
+`debug: true` оборачивает `fetch`, `XMLHttpRequest`, `Image.src`, `sendBeacon`,
+`WebSocket` и `EventSource` и сообщает о нарушении через событие `error`.
+Случайный `fetch` иначе остался бы незаметным до ревью загрузки.
 
-## What is checked, and by what
+## Что чем проверяется
 
-| Concern | Where |
+| Что | Где |
 |---|---|
-| Merge rules, level solvability | `board.test.ts` |
-| Beat timing, gating, variants | `director.test.ts` |
-| Fixed timestep under stall | `loop.test.ts` |
-| Config validation and defaults | `config.test.ts` |
-| Detection, fallback, forced networks | `registry.test.ts` |
-| Size, external requests, MRAID, exit calls | `check.test.ts` |
+| Правила слияния, решаемость уровней | `board.test.ts` |
+| Тайминг битов, гейты, варианты | `director.test.ts` |
+| Фиксированный шаг при просадке | `loop.test.ts` |
+| Валидация конфига и значения по умолчанию | `config.test.ts` |
+| Детект, фолбэк, закреплённые сети | `registry.test.ts`, `networks.test.ts` |
+| Размер, внешние запросы, MRAID, выходы | `check.test.ts` |
 
-Not covered by automated tests, and deliberately: whether the creative is any
-good, and whether a network's real container behaves like the simulator. Those
-need a human and an upload.
+Что автоматическими тестами не покрыто и покрыто намеренно: хорош ли креатив и
+ведёт ли себя реальный контейнер сети как симулятор. Для этого нужен человек и
+загрузка.

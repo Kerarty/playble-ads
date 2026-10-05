@@ -1,9 +1,12 @@
 /**
- * Simulator UI.
+ * Симулятор.
  *
- * Loads the built playable into an iframe with a fake network SDK injected, and
- * shows what the playable called. This is the tool that turns "it works on my
- * machine" into "installs work in a container shaped like AppLovin's".
+ * Грузит собранный playable в iframe с подставленным SDK фейковой сети и
+ * показывает, что именно вызвал playable. Это то, что превращает «у меня на
+ * машине работает» в «установка работает в контейнере формы AppLovin».
+ *
+ * Интерфейс на русском: проект русскоязычный, и инструмент для владельца
+ * репозитория должен читаться без перевода.
  */
 import { SIMULATIONS, createBridge, type BridgeLogEntry, type SimulatedNetwork } from './bridge.js';
 
@@ -113,19 +116,23 @@ function build(): void {
 
   const header = el('header', 'header');
   header.append(
-    el('h1', undefined, 'Playble Ad Simulator'),
-    el('p', 'subtitle', 'Load a built playable inside a fake network container and watch every SDK call it makes.'),
+    el('h1', undefined, 'Симулятор Playble Ads'),
+    el(
+      'p',
+      'subtitle',
+      'Грузит собранный playable в фейковый контейнер сети и показывает каждый вызов SDK, который он делает.',
+    ),
   );
 
   const controls = el('div', 'controls');
   const networkField = el('label', 'field');
-  networkField.append(el('span', 'field-label', 'Network'), networkSelect);
+  networkField.append(el('span', 'field-label', 'Сеть'), networkSelect);
   const variantField = el('label', 'field');
-  variantField.append(el('span', 'field-label', 'Hook variant'), variantSelect);
-  const reloadButton = el('button', 'button', 'Reload unit');
+  variantField.append(el('span', 'field-label', 'Вариант хука'), variantSelect);
+  const reloadButton = el('button', 'button', 'Перезагрузить юнит');
   controls.append(networkField, variantField, reloadButton);
 
-  const note = el('p', 'note', `${sim.note} Chrome at the bottom: ${sim.bottomChrome}px.`);
+  const note = el('p', 'note', `${sim.note} Хром снизу: ${sim.bottomChrome}px.`);
 
   const stage = el('div', 'stage');
   const frame = el('iframe', 'frame');
@@ -136,12 +143,12 @@ function build(): void {
   stage.append(frame);
 
   const chrome = el('div', 'chrome');
-  chrome.textContent = `${sim.label} chrome (${sim.bottomChrome}px)`;
+  chrome.textContent = `${sim.label} — хром ${sim.bottomChrome}px`;
 
   const logPanel = el('aside', 'log');
-  const logTitle = el('h2', undefined, 'SDK calls');
+  const logTitle = el('h2', undefined, 'Вызовы SDK');
   const logList = el('ol', 'log-list');
-  const exitBadge = el('p', 'exit-badge', 'no exit yet');
+  const exitBadge = el('p', 'exit-badge', 'выхода ещё не было');
   logPanel.append(logTitle, exitBadge, logList);
 
   function renderLog(): void {
@@ -155,7 +162,7 @@ function build(): void {
       );
       logList.append(item);
     }
-    exitBadge.textContent = state.exit ? `exited via ${state.exit}` : 'no exit yet';
+    exitBadge.textContent = state.exit ? `выход через ${state.exit}` : 'выхода ещё не было';
     exitBadge.classList.toggle('exit-badge--ok', state.exit !== null);
   }
 
@@ -193,7 +200,7 @@ function build(): void {
           state.exit = bridge.exitCall();
           renderLog();
         } catch (error) {
-          state.log.push({ at: 0, api: 'simulator', detail: `could not reach the frame: ${String(error)}` });
+          state.log.push({ at: 0, api: 'simulator', detail: `не удалось достучаться до фрейма: ${String(error)}` });
           renderLog();
         }
       },
@@ -205,8 +212,8 @@ function build(): void {
     state.network = networkSelect.value as SimulatedNetwork;
     const next = SIMULATIONS[state.network];
     frame.style.paddingBottom = `${next.bottomChrome}px`;
-    note.textContent = `${next.note} Chrome at the bottom: ${next.bottomChrome}px.`;
-    chrome.textContent = `${next.label} chrome (${next.bottomChrome}px)`;
+    note.textContent = `${next.note} Хром снизу: ${next.bottomChrome}px.`;
+    chrome.textContent = `${next.label} — хром ${next.bottomChrome}px`;
     load();
   });
 
