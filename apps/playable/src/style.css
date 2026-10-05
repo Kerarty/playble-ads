@@ -8,7 +8,7 @@ body {
   padding: 0;
   height: 100%;
   overflow: hidden;
-  /* Ads are click-through surfaces: nothing here should select or trigger a
+  /* Ads are click-through surfaces: nothing here should select text or trigger a
      callout when a player drags a block. */
   -webkit-user-select: none;
   user-select: none;
@@ -21,16 +21,33 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
-  /* Fills the iframe; the canvas letterboxes the design box inside it. */
+  /* Fills the slot; the canvas covers it too, so the letterbox area around the
+     fitted design box still reads as part of the ad. */
   background: radial-gradient(120% 90% at 50% 8%, #24304a 0%, #131826 55%, #0a0d14 100%);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 #playble-canvas {
+  position: absolute;
+  inset: 0;
   display: block;
-  width: 100%;
-  height: 100%;
   touch-action: none;
+}
+
+/* --- design-space overlay layer ---------------------------------------- */
+
+/*
+ * Children are laid out in 720x1280 design pixels; `refit()` positions and
+ * scales this layer to match the fitted design box. The layer itself must not
+ * eat pointer events, or dragging a block that passes under the copy overlay
+ * would break.
+ */
+.playble-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  pointer-events: none;
 }
 
 /* --- copy overlay ----------------------------------------------------- */
@@ -40,15 +57,20 @@ body {
   top: 9%;
   left: 50%;
   transform: translateX(-50%);
-  width: min(88%, 640px);
+  width: 92%;
   text-align: center;
   pointer-events: none;
   color: #fff;
 }
 
+/* Same specificity trap as the CTA: see the note below. */
+.playble-copy[hidden] {
+  display: none;
+}
+
 .playble-copy__title {
   margin: 0;
-  font-size: clamp(28px, 7vw, 52px);
+  font-size: 76px;
   font-weight: 800;
   letter-spacing: 0.01em;
   line-height: 1.05;
@@ -56,19 +78,16 @@ body {
 }
 
 .playble-copy__sub {
-  margin: 6px 0 0;
-  font-size: clamp(15px, 3.6vw, 24px);
+  margin: 10px 0 0;
+  font-size: 38px;
   font-weight: 600;
   color: #cfe0ff;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
-.playble-copy--in .playble-copy__title {
-  animation: copy-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
+.playble-copy--in .playble-copy__title,
 .playble-copy--pop .playble-copy__title {
-  animation: copy-pop 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: copy-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @keyframes copy-pop {
@@ -92,29 +111,41 @@ body {
   width: 100%;
   display: flex;
   justify-content: center;
+  /* Only the button is clickable, not the full-width strip around it. */
+  pointer-events: none;
+}
+
+/*
+ * `hidden` alone is not enough here: the UA stylesheet's `[hidden] { display:
+ * none }` has lower specificity than `.playble-cta { display: flex }`, so the
+ * wrapper would stay visible and the install button would sit on screen from
+ * frame one - before the player has won anything.
+ */
+.playble-cta[hidden] {
+  display: none;
 }
 
 .playble-cta__button {
-  position: relative;
-  min-height: 68px;
-  width: min(80%, 560px);
+  pointer-events: auto;
+  min-height: 132px;
+  width: 82%;
   border: 0;
   border-radius: 999px;
   background: linear-gradient(180deg, #6ee36e 0%, #3fae4a 100%);
   color: #06210a;
   font: inherit;
-  font-size: clamp(20px, 5vw, 30px);
+  font-size: 58px;
   font-weight: 800;
   letter-spacing: 0.02em;
   cursor: pointer;
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.45),
-    inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+    inset 0 -6px 0 rgba(0, 0, 0, 0.18);
   transition: transform 90ms ease, filter 120ms ease;
 }
 
 .playble-cta__button:active {
-  transform: translateY(2px) scale(0.985);
+  transform: translateY(4px) scale(0.985);
   filter: brightness(0.94);
 }
 
@@ -125,21 +156,25 @@ body {
 
 .playble-cta__sub {
   display: block;
-  margin-top: 2px;
-  font-size: 0.5em;
+  margin-top: 4px;
+  font-size: 0.42em;
   font-weight: 700;
   opacity: 0.75;
 }
 
-/* The pulse matters more than it looks: it is the only thing still moving on
-   screen at the moment the CTA appears, and it pulls the thumb. */
+/*
+ * The pulse matters more than it looks: it is the only thing still moving on
+ * screen at the moment the CTA appears, and it pulls the thumb.
+ */
 .playble-cta__button--in {
-  animation: cta-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1), cta-pulse 1100ms ease-in-out 320ms infinite;
+  animation:
+    cta-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    cta-pulse 1100ms ease-in-out 320ms infinite;
 }
 
 @keyframes cta-in {
   from {
-    transform: translateY(40px) scale(0.9);
+    transform: translateY(60px) scale(0.9);
     opacity: 0;
   }
   to {
@@ -162,14 +197,14 @@ body {
 
 .playble-debug {
   position: absolute;
-  left: 8px;
-  top: 8px;
+  left: 16px;
+  top: 16px;
   margin: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 12px 16px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.62);
   color: #b9f6ca;
-  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 22px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
   pointer-events: none;
   white-space: pre;
 }

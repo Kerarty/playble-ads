@@ -16,7 +16,7 @@
  */
 import './style.css';
 import { createPlayble, type Adapter, type NetworkId, type Playable } from '@playble/core';
-import { AdaptiveQuality, Tweens, Viewport, createLoop, createStage, ctaSafeBottom } from '@playble/engine';
+import { AdaptiveQuality, Tweens, Viewport, createLoop, createStage } from '@playble/engine';
 import { Scene } from './game/scenes.js';
 import { InputController } from './game/input.js';
 import { Director } from './game/director.js';
@@ -67,25 +67,38 @@ export async function startPlayable(options: StartOptions): Promise<void> {
   const rect = (): DOMRect => host.getBoundingClientRect();
 
   const stage = await createStage({
-    design: viewport.design,
-    width: Math.max(1, rect().width),
-    height: Math.max(1, rect().height),
+    width: Math.max(1, Math.round(rect().width)),
+    height: Math.max(1, Math.round(rect().height)),
   });
   host.append(stage.app.canvas);
   stage.app.canvas.id = 'playble-canvas';
 
   viewport.measure(host);
-  resizeToHost();
 
   const scene = new Scene(stage.world, tweens);
   const audio = new AudioBus({ mode: playable.config.audio, volume: playable.config.volume });
-  const copy = createCopy(root);
-  const debug = debugOn ? createDebug(root) : null;
+
+  /**
+   * DOM overlays live inside a design-space layer.
+   *
+   * They are positioned in design pixels and transformed with the fitted box, so
+   * a CTA at the bottom of the 720×1280 design is at the bottom of the ad in any
+   * slot. The layer must not intercept pointer events itself - only its children
+   * that are meant to be clickable do.
+   */
+  const overlayLayer = document.createElement('div');
+  overlayLayer.className = 'playble-overlay';
+  root.append(overlayLayer);
+
+  const copy = createCopy(overlayLayer);
+  const debug = debugOn ? createDebug(overlayLayer) : null;
 
   // The CTA sits above whatever chrome the network draws at the bottom. The
-  // inset comes from the runtime's network profile rather than being guessed.
-  const cta = createCta(root, {
-    safeBottom: ctaSafeBottom(playable.network.bottomUiInset, viewport),
+  // inset comes from the runtime's network profile rather than being guessed, and
+  // is converted into design pixels so the button lands in the same place in a
+  // 320x480 slot as in a full-screen one.
+  const cta = createCta(overlayLayer, {
+    safeBottom: viewport.insetToDesign(playable.network.bottomUiInset),
     label: 'УСТАНОВИТЬ',
     sublabel: 'бесплатно',
     onTap: () => {
@@ -187,41 +200,58 @@ export async function startPlayable(options: StartOptions): Promise<void> {
 
   // --- viewport --------------------------------------------------------
   /**
-   * Fits the design box into the iframe.
+   * Resizes the canvas and refits the design box into it.
    *
-   * Three sizes have to stay consistent, and mixing them up squashes the
-   * picture: the canvas element's CSS box (host size), the renderer's backbuffer
-   * (host size × dpr × quality scale), and the world transform that maps the
-   * 720×1280 design space onto the backbuffer. Anything else and a portrait ad
-   * in a landscape slot comes out stretched.
+   * Four things have to agree, and getting this wrong is what produces a
+   * squashed playable:
+   *
+   *  1. the canvas element's CSS box — always the full slot;
+   *  2. the renderer's backbuffer — slot × dpr × quality scale;
+   *  3. the world transform — design space (720×1280) mapped into the backbuffer
+   *     at a uniform scale, centred;
+   *  4. the DOM overlays — positioned in design space, so they move with the game
+   *     rather than being pinned to the slot.
+   *
+   * The canvas covering the whole slot while the design box only fills the middle
+   * is intentional: it means the letterbox area still shows the game's background
+   * instead of a bare strip of page colour.
    */
-  function resizeToHost(): void {
-    const box = rect();
-    const cssWidth = Math.max(1, Math.round(box.width));
-    const cssHeight = Math.max(1, Math.round(box.height));
-
+  function refit(): void {
+    const slot = viewport.slot;
     const backbuffer = viewport.backbufferSize(quality.current.resolutionScale);
+
     stage.resize(backbuffer.width, backbuffer.height);
 
     const canvas = stage.app.canvas;
-    canvas.style.width = `${cssWidth}px`;
-    canvas.style.height = `${cssHeight}px`;
-    // The world transform maps design space onto the backbuffer, so the fit is
-    // computed from the backbuffer, not from the CSS box.
-    const fit = Math.max(backbuffer.width / viewport.design.width, backbuffer.height / viewport.design.height);
-    stage.world.scale.set(fit);
-    stage.world.x = (backbuffer.width - viewport.design.width * fit) / 2;
-    stage.world.y = (backbuffer.height - viewport.design.height * fit) / 2;
+    canvas.style.width = `${slot.width}px`;
+    canvas.style.height = `${slot.height}px`;
+
+    const design = viewport.design;
+    const fit = viewport.fitted;
+
+    // Backbuffer pixels per CSS pixel. The quality controller scales the
+    // backbuffer without changing the slot, so this is not always 1.
+    const toBackbuffer = backbuffer.width / slot.width;
+
+    stage.world.scale.set(fit.scale * toBackbuffer);
+    stage.world.x = fit.x * toBackbuffer;
+    stage.world.y = fit.y * toBackbuffer;
+
+    // Overlays live in design space, so the CTA and the copy land in the same
+    // place in a 320x480 slot as in a full-screen one.
+    overlayLayer.style.transform = `translate(${fit.x}px, ${fit.y}px) scale(${fit.scale})`;
+    overlayLayer.style.width = `${design.width}px`;
+    overlayLayer.style.height = `${design.height}px`;
   }
 
   function resize(): void {
     if (!viewport.measure(host)) return;
-    resizeToHost();
+    refit();
   }
 
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
-  resize();
+  refit();
 
   // --- loop ------------------------------------------------------------
   const loop = createLoop({
@@ -275,11 +305,11 @@ export async function startPlayable(options: StartOptions): Promise<void> {
     const settings = quality.update(smoothedFps, worstFrameMs);
     playable.reportPerf(quality.sample(smoothedFps));
 
-    // Re-resolve the backbuffer only when the scale actually changed; doing it
-    // on every sample would reallocate the framebuffer several times a second.
+    // Refit only when the quality scale actually changed; doing it on every
+    // sample would reallocate the framebuffer several times a second.
     if (settings.resolutionScale !== lastAppliedScale) {
       lastAppliedScale = settings.resolutionScale;
-      resizeToHost();
+      refit();
     }
 
     if (debug) debug.setText(debugText());
@@ -310,6 +340,7 @@ export async function startPlayable(options: StartOptions): Promise<void> {
     cta.dispose();
     copy.dispose();
     debug?.dispose();
+    overlayLayer.remove();
     playable.destroy();
     stage.destroy();
     window.removeEventListener('resize', resize);
