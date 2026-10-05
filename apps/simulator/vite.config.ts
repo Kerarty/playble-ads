@@ -9,6 +9,9 @@ import { resolve } from 'node:path';
  */
 export default defineConfig({
   publicDir: 'public',
+  // Relative asset paths, so the site works under a GitHub Pages project path
+  // like /playble-ads/ as well as at a domain root.
+  base: './',
   server: {
     port: 5174,
     strictPort: true,
@@ -23,5 +26,6 @@ export default defineConfig({
   build: {
     target: 'es2019',
     outDir: 'dist',
+    emptyOutDir: true,
   },
 });
