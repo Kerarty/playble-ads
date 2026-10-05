@@ -25,6 +25,24 @@ export const COLS = 4;
 export const ROWS = 5;
 export const CELL_COUNT = COLS * ROWS;
 
+/**
+ * Fisher-Yates using the injected random source.
+ *
+ * Takes the RNG as an argument rather than calling `Math.random` directly so
+ * tests are reproducible: a merge board bug found in a test has to be replayable
+ * with the same seed.
+ */
+function shuffle<T>(items: T[], random: () => number): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    const a = items[i]!;
+    const b = items[j]!;
+    items[i] = b;
+    items[j] = a;
+  }
+  return items;
+}
+
 export interface MergeResult {
   /** Both source blocks, already removed from the board by `applyMove`. */
   consumed: [number, number];
@@ -83,15 +101,7 @@ export class Board {
         if (!this.cells[Board.index(col, row)]) out.push([col, row]);
       }
     }
-    // Fisher-Yates with the injected random source, so tests stay deterministic.
-    for (let i = out.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(random() * (i + 1));
-      const a = out[i]!;
-      const b = out[j]!;
-      out[i] = b;
-      out[j] = a;
-    }
-    return out;
+    return shuffle(out, random);
   }
 
   spawn(tier: Tier, col: number, row: number): Block {
@@ -158,6 +168,82 @@ export class Board {
 
     const produced = this.spawn((targetTier + 1) as Tier, targetCol, targetRow);
     return { consumed: [source.id, target.id], produced };
+  }
+
+  /**
+   * Spawns the replacement block after a merge.
+   *
+   * The naive version - a tier-0 block in any random free cell - is a deadlock
+   * waiting to happen. With enough refills it is easy to reach a board where no
+   * two adjacent blocks share a tier and every free cell is isolated: no merge
+   * is possible, the board is not full, so `evaluateBoard` reports "not done,
+   * not stuck", and the round cannot be finished.
+   *
+   * So the refill prefers a free cell next to an existing tier-0 block, which
+   * guarantees at least one merge remains available. If no such cell exists - a
+   * nearly full board - any free cell will do, because then the "stuck"
+   * condition is genuinely reachable and `evaluateBoard` handles it.
+   *
+   * Returns the spawned block, or null when the board is full.
+   */
+  spawnRefill(tier: Tier = 0, random: () => number = Math.random): Block | null {
+    const adjacent = this.cellsAdjacentToTier(tier);
+    if (adjacent.length > 0) {
+      const [pick] = shuffle(adjacent, random);
+      if (pick) return this.spawn(tier, pick[0], pick[1]);
+    }
+
+    const [anywhere] = shuffle(this.emptyCells(), random);
+    if (!anywhere) return null;
+    return this.spawn(tier, anywhere[0], anywhere[1]);
+  }
+
+  /**
+   * Guarantees the player has something to do.
+   *
+   * Spawns a tier-0 block next to another tier-0 when no merge is currently
+   * available, and returns it, or null if the board is full.
+   *
+   * Why this exists rather than "refill on every merge": merging always consumes
+   * a pair and produces one block, so the count shrinks by one each time. A
+   * level with four tier-0 blocks exhausts them in two merges and is left with
+   * blocks that cannot merge - not full, so `evaluateBoard` calls it "not done",
+   * but unwinnable. The refill-on-merge rule avoids that only as long as a merge
+   * has just happened; when merges run out, nothing triggers the next refill.
+   *
+   * So the invariant is enforced explicitly: after any board change, either a
+   * merge is available or the board is full. That is what makes a 15 second
+   * playable never dead-end.
+   */
+  ensurePlayable(random: () => number = Math.random): Block | null {
+    if (hasAnyMerge(this)) return null;
+    return this.spawnRefill(0, random);
+  }
+
+  /** Free cells that share an edge with a block of `tier`. */
+  private cellsAdjacentToTier(tier: Tier): Array<[number, number]> {
+    const out: Array<[number, number]> = [];
+    const deltas: Array<[number, number]> = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    for (let row = 0; row < ROWS; row += 1) {
+      for (let col = 0; col < COLS; col += 1) {
+        if (this.get(col, row)) continue;
+        for (const [dx, dy] of deltas) {
+          const neighbour = this.get(col + dx, row + dy);
+          if (neighbour && neighbour.tier === tier) {
+            out.push([col, row]);
+            break;
+          }
+        }
+      }
+    }
+
+    return out;
   }
 
   /** Cells adjacent to `block`, for the "one action" magnetism in input. */
@@ -233,16 +319,17 @@ export const LEVELS: readonly LevelSpec[] = [
 /**
  * Builds a board from a level picture.
  *
- * Returns null for a layout with the wrong dimensions, so a bad edit to the
+ * Pass an existing `board` to load into it, which is what the simulation tests
+ * do. Returns null for a layout with the wrong dimensions, so a bad edit to the
  * level data shows up as a clear error instead of a silently broken board.
  */
-export function boardFromLayout(layout: readonly string[]): Board | null {
+export function boardFromLayout(layout: readonly string[], into?: Board): Board | null {
   if (layout.length !== ROWS) return null;
   for (const row of layout) {
     if (row.length !== COLS) return null;
   }
 
-  const board = new Board();
+  const board = into ?? new Board();
   layout.forEach((line, row) => {
     [...line].forEach((ch, col) => {
       if (ch !== '.') board.spawn(Number(ch) as Tier, col, row);
@@ -257,8 +344,12 @@ export type LevelOutcome = 'won' | 'stuck';
  * Checks whether the round is over.
  *
  * `won` as soon as the goal tier exists. `stuck` when no merge is possible and
- * no free cell remains - that is the only lose condition, and it is deliberately
- * hard to reach in a 15 second ad.
+ * no free cell remains - the only lose condition, and deliberately hard to reach
+ * in a 15 second ad.
+ *
+ * Note what is *not* a lose condition: a board with free cells but no available
+ * merge. That is a dead end rather than a loss, and the caller prevents it by
+ * calling `ensurePlayable()` after every change.
  */
 export function evaluateBoard(board: Board, goal: Tier): { done: boolean; outcome: LevelOutcome | null } {
   for (let row = 0; row < ROWS; row += 1) {

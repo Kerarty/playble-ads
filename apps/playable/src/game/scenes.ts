@@ -140,8 +140,14 @@ export class Scene {
    *
    * Returns true when the drop merged, which is the caller's cue to play merge
    * feedback and count the move.
+   *
+   * A successful merge spawns a replacement block. This is not decoration: a
+   * merge board with no refill reaches a state where no two blocks match and no
+   * merge is possible while cells are still free, which `evaluateBoard` correctly
+   * reports as "not done, not stuck" - and the round is then unwinnable. Refilling
+   * on merge is the standard rule for the genre and it keeps the board alive.
    */
-  drop(sourceId: number, targetCol: number, targetRow: number): boolean {
+  drop(sourceId: number, targetCol: number, targetRow: number, random: () => number = Math.random): boolean {
     this.draggedId = null;
 
     const sourceCell = this.cellOf(sourceId);
@@ -182,6 +188,19 @@ export class Scene {
 
     this.burst(center, result.produced.tier);
     this.bumpNeighbours(targetCol, targetRow, result.produced.id);
+
+    // Keep the board playable. A merge consumes two blocks and makes one, so the
+    // pairs run out; without this the round dead-ends with free cells and nothing
+    // to do, which is the worst possible state in an ad. See
+    // `Board.ensurePlayable`.
+    const refill = this.board.ensurePlayable(random);
+    if (refill) {
+      const refillView = this.pool.get();
+      const refillCenter = this.cellCenter(refill.col, refill.row);
+      refillView.show(refill, refillCenter.x, refillCenter.y - CELL / 2);
+      refillView.popIn(this.tweens, 90);
+      this.views.set(refill.id, refillView);
+    }
 
     this.metrics.blocks = this.views.size;
     return true;

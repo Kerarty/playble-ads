@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Board,
   boardFromLayout,
+  CELL_COUNT,
   COLS,
   evaluateBoard,
   hasAnyMerge,
@@ -193,6 +194,160 @@ describe('evaluateBoard', () => {
   });
 });
 
+describe('refill rule', () => {
+  /**
+   * A merge board with no refill can deadlock: no two blocks match, so no merge
+   * is possible, while cells are still free - and `evaluateBoard` correctly calls
+   * that "not done, not stuck". The scene therefore refills after every merge;
+   * this checks the invariant that refill actually maintains.
+   */
+  it('always leaves a merge available after a refill', () => {
+    const random = mulberry32(12345);
+
+    for (let trial = 0; trial < 60; trial += 1) {
+      const board = new Board();
+      boardFromLayout(LEVELS[trial % LEVELS.length]!.layout);
+
+      for (let move = 0; move < 30; move += 1) {
+        const merge = findMerge(board);
+        if (!merge) break;
+
+        const source = board.get(...merge.sourceCell);
+        if (!source) break;
+        board.applyMove(source.id, merge.target.col, merge.target.row);
+        board.ensurePlayable(random);
+
+        const state = evaluateBoard(board, MAX_TIER);
+        if (state.done) break;
+        // Not done means the player still has something to do: either a merge is
+        // available, or the board is full and the stuck branch owns it.
+        if (board.occupiedCount < CELL_COUNT) expect(hasAnyMerge(board)).toBe(true);
+      }
+    }
+  });
+
+  it('places the refill next to a tier-0 block when it can', () => {
+    const board = fromPicture(['0...', '....', '....', '....', '....']);
+    const refill = board.spawnRefill(0, mulberry32(7));
+
+    expect(refill).not.toBeNull();
+    const neighbours = board.neighbours(refill!).map(([c, r]) => board.get(c, r)?.tier);
+    expect(neighbours).toContain(0);
+  });
+
+  it('falls back to any free cell when no tier-0 is adjacent to one', () => {
+    // A board of distinct tiers: nothing to place next to, but cells are free.
+    const board = fromPicture(['0...', '....', '....', '....', '..1.']);
+    const refill = board.spawnRefill(0, mulberry32(3));
+    expect(refill).not.toBeNull();
+    expect(refill!.tier).toBe(0);
+  });
+
+  it('returns null when the board is full', () => {
+    const board = new Board();
+    for (let row = 0; row < ROWS; row += 1) {
+      for (let col = 0; col < COLS; col += 1) board.spawn(0, col, row);
+    }
+    expect(board.spawnRefill(0, mulberry32(1))).toBeNull();
+  });
+
+  it('reaches the goal when refilling on every merge', () => {
+    // Several seeds, not one: the whole point of the refill rule is that it has
+    // to work for every board, not for the one a fixed seed happens to produce.
+    const runs = 60;
+    let wins = 0;
+    const failures: number[] = [];
+
+    for (let seed = 1; seed <= runs; seed += 1) {
+      const random = mulberry32(seed * 7919);
+      const board = new Board();
+      const level = LEVELS[seed % LEVELS.length]!;
+      boardFromLayout(level.layout, board);
+
+      let done = false;
+      for (let move = 0; move < 200 && !done; move += 1) {
+        const merge = findMerge(board);
+        if (!merge) break;
+
+        const source = board.get(...merge.sourceCell);
+        if (!source) break;
+        board.applyMove(source.id, merge.target.col, merge.target.row);
+        board.ensurePlayable(random);
+
+        const state = evaluateBoard(board, level.goal);
+        if (state.done) {
+          done = true;
+          if (state.outcome === 'won') wins += 1;
+        }
+      }
+
+      if (!done) failures.push(seed);
+    }
+
+    expect(failures).toEqual([]);
+    expect(wins).toBe(runs);
+  });
+
+  it('ensurePlayable tops the board back up when pairs run out', () => {
+    // The exact state that used to dead-end: no merge available, cells free.
+    const board = fromPicture(['.1..', '1.1.', '....', '...0', '....']);
+    expect(hasAnyMerge(board)).toBe(false);
+    expect(board.occupiedCount).toBeLessThan(CELL_COUNT);
+
+    const added = board.ensurePlayable(mulberry32(11));
+    expect(added).not.toBeNull();
+    expect(hasAnyMerge(board)).toBe(true);
+  });
+
+  it('ensurePlayable adds nothing while a merge is available', () => {
+    const board = fromPicture(['00..', '....', '....', '....', '....']);
+    expect(board.ensurePlayable(mulberry32(5))).toBeNull();
+    expect(board.occupiedCount).toBe(2);
+  });
+
+  it('ensurePlayable cannot fix a full board, and reports it as stuck', () => {
+    // Distinct tiers in a checkerboard: full, and nothing can merge.
+    const board = fromPicture(['0101', '1010', '0101', '1010', '0101']);
+    expect(hasAnyMerge(board)).toBe(false);
+    expect(board.ensurePlayable(mulberry32(2))).toBeNull();
+    expect(evaluateBoard(board, MAX_TIER + 1 as Tier).outcome).toBe('stuck');
+  });
+
+  it('fills up eventually, so the stuck condition is still reachable', () => {
+    // The refill must not be so generous that the board never fills, or the
+    // stuck branch would be dead code.
+    const random = mulberry32(4242);
+    const board = new Board();
+    board.spawnRandom(0, random);
+
+    for (let i = 0; i < 400; i += 1) {
+      const merge = findMerge(board);
+      if (!merge) {
+        if (board.occupiedCount >= CELL_COUNT) break;
+        if (board.spawnRandom(0, random) === null) break;
+        continue;
+      }
+      const source = board.get(...merge.sourceCell)!;
+      board.applyMove(source.id, merge.target.col, merge.target.row);
+      if (board.occupiedCount < CELL_COUNT) board.spawnRandom(0, random);
+    }
+
+    expect(board.occupiedCount).toBeGreaterThan(5);
+  });
+});
+
+/** Deterministic PRNG, so a failure is reproducible. */
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 describe('LEVELS', () => {
   it('fits the grid exactly', () => {
     for (const level of LEVELS) {
@@ -243,9 +398,11 @@ describe('LEVELS', () => {
       let guard = 0;
       while (!evaluateBoard(board, level.goal).done && guard < 200) {
         guard += 1;
-        const target = findMerge(board);
-        if (!target) break;
-        board.applyMove(target.source.id, target.target.col, target.target.row);
+        const merge = findMerge(board);
+        if (!merge) break;
+        const source = board.get(...merge.sourceCell);
+        if (!source) break;
+        board.applyMove(source.id, merge.target.col, merge.target.row);
       }
       expect(evaluateBoard(board, level.goal).outcome).toBe('won');
     }
@@ -269,7 +426,7 @@ describe('boardFromLayout', () => {
 });
 
 /** Finds any available merge, for solvability checks. */
-function findMerge(board: Board): { source: { id: number }; target: { col: number; row: number } } | null {
+function findMerge(board: Board): { sourceCell: [number, number]; target: { col: number; row: number } } | null {
   for (let row = 0; row < ROWS; row += 1) {
     for (let col = 0; col < COLS; col += 1) {
       const block = board.get(col, row);
@@ -277,7 +434,7 @@ function findMerge(board: Board): { source: { id: number }; target: { col: numbe
       for (const [nc, nr] of board.neighbours(block)) {
         const neighbour = board.get(nc, nr);
         if (neighbour && board.canMerge(block, neighbour)) {
-          return { source: { id: block.id }, target: { col: nc, row: nr } };
+          return { sourceCell: [col, row] as [number, number], target: { col: nc, row: nr } };
         }
       }
     }
