@@ -26,6 +26,20 @@ test instead.
 | `apps/simulator` | Runs a built playable in a fake network container and logs every SDK call. |
 | `tools/spec-check` | Validates a built file against every network's published spec. |
 
+## Status
+
+v1.0.0. Typecheck, 161 unit tests and the spec-checked build are green; CI runs
+them on every push.
+
+Two limits worth stating before anything else:
+
+- **The simulator fakes the SDK bridge and the network chrome.** It does not fake
+  ad serving or review, so a green run there means "the mechanics work in a
+  container shaped like this one", not "this will be approved".
+- **The creative is unmeasured.** The timing and mechanics follow published
+  benchmarks, but a playable needs real impressions to say anything about
+  whether it installs. The two hook variants ship as hypotheses, not results.
+
 ## Quick start
 
 ```bash
@@ -33,6 +47,8 @@ npm install
 npm run check        # typecheck, unit tests, and the spec-checked build
 npm run simulator    # build the playable, then serve the simulator at :5174
 ```
+
+Then open http://localhost:5174, pick a network, and press **Reload unit**.
 
 ## Using the SDK
 
@@ -114,6 +130,16 @@ the creative itself is good is not something a static check can answer.
 - [`docs/architecture.md`](docs/architecture.md) — how the pieces fit and why
 - [`docs/adr/`](docs/adr/) — the decisions worth arguing about, with reasons
 - [`docs/playable-design.md`](docs/playable-design.md) — the creative side: timing, mechanics, and what the benchmarks say
+
+## Roadmap
+
+Open issues carry the reasoning, not just the task:
+
+- [Playwright E2E for the simulator](https://github.com/Kerarty/playble-ads/issues/2)
+- [Measure the two hook variants](https://github.com/Kerarty/playble-ads/issues/3)
+- [Publish the simulator to Pages](https://github.com/Kerarty/playble-ads/issues/4)
+- [Real containers vs the simulator](https://github.com/Kerarty/playble-ads/issues/5)
+- [Attribute analytics to the serving network](https://github.com/Kerarty/playble-ads/issues/6)
 
 ## Tests
 
