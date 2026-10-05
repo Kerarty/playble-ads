@@ -41,3 +41,39 @@ jobs:
           name: playable-artefacts
           path: apps/playable/dist/*.html
           retention-days: 7
+
+  # Plays the built artefact in a real browser.
+  #
+  # Separate from the unit tests because it catches a different class of
+  # problem: the renderer and the input path disagreeing about where a block is,
+  # the board dead-ending with nothing mergeable, the CTA never appearing. All
+  # of those pass `npm test` and fail in the actual game, and all of them got
+  # through into a build before this job existed.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `playwright-core` drives whatever Chromium the runner already has, so
+      # there is no browser download step and no cache to configure.
+      - name: Start the simulator
+        run: node scripts/run-simulator.mjs &
+
+      - name: Wait for the simulator
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5174/ > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "the simulator did not come up"
+          exit 1
+
+      - name: Play the unit and check every exit path
+        run: npm run smoke

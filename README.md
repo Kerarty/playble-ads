@@ -1,58 +1,65 @@
 # Playble Ads
 
-An engine-agnostic SDK for HTML5 playable ads, plus a demo playable and a
-simulator for testing against real ad-network containers.
+Движко-независимый SDK для HTML5 playable-рекламы, демо-креатив и симулятор
+рекламных контейнеров.
 
-Playable ads are interactive ads: the user plays a few seconds of a game inside
-the ad unit and then decides whether to install. They convert better than video
-on install rate, which makes the format worth building properly.
+Playable — это интерактивная реклама: человек играет несколько секунд в игру
+внутри рекламного блока и решает, ставить ли приложение. По числу установок
+формат работает лучше видео, поэтому его стоит делать правильно.
 
-## Why this exists
+## Зачем это нужно
 
-Every ad network wants HTML5 delivered as one self-contained file, forbids
-external requests, and expects a specific call to send the user to the store.
-Get any of that wrong and the unit is rejected in review, days after the creative
-was finished. This repo makes those constraints a build-time check and a local
-test instead.
+Любая рекламная сеть хочет HTML5 одним самодостаточным файлом, запрещает
+внешние запросы и ждёт конкретный вызов для перехода в магазин. Ошибка в любом
+из трёх пунктов означает отклонение на ревью загрузки — через несколько дней
+после того, как креатив готов. Здесь эти ограничения становятся ошибкой сборки и
+локальным тестом.
 
-## Layout
+## Состав
 
-| Path | What it is |
+| Путь | Что это |
 |---|---|
-| `packages/core` | The runtime. No dependencies, no renderer. Network detection, the event API, dev guards. |
-| `packages/adapters` | One module per ad network. Knows how to reach the store, nothing else. |
-| `packages/engine` | PixiJS loop, tweening, pooling, adaptive quality. |
-| `apps/playable` | A merge game built on the engine. Three builds, one per network family. |
-| `apps/simulator` | Runs a built playable in a fake network container and logs every SDK call. |
-| `tools/spec-check` | Validates a built file against every network's published spec. |
+| `packages/core` | Рантайм. Без зависимостей и без рендерера: детект сети, события, dev-guard. |
+| `packages/adapters` | По модулю на рекламную сеть. Знает только то, как уйти в магазин. |
+| `packages/engine` | Цикл на PixiJS, твины, пул объектов, адаптивное качество. |
+| `apps/playable` | Merge-игра на этом движке. Три сборки — по одной на семейство сетей. |
+| `apps/simulator` | Запускает готовую сборку в фейковом контейнере сети и логирует каждый вызов SDK. |
+| `tools/spec-check` | Проверяет собранный файл против опубликованных требований всех сетей. |
 
-## Status
+## Статус
 
-v1.0.0. Typecheck, 161 unit tests and the spec-checked build are green; CI runs
-them on every push.
+v1.0.0. Typecheck, 194 юнит-теста, сборка с проверкой спецификаций и прогон
+собранного юнита в браузере — зелёные. CI прогоняет их на каждом пуше.
 
-Two limits worth stating before anything else:
+Два ограничения, о которых честнее сказать сразу:
 
-- **The simulator fakes the SDK bridge and the network chrome.** It does not fake
-  ad serving or review, so a green run there means "the mechanics work in a
-  container shaped like this one", not "this will be approved".
-- **The creative is unmeasured.** The timing and mechanics follow published
-  benchmarks, but a playable needs real impressions to say anything about
-  whether it installs. The two hook variants ship as hypotheses, not results.
+- **Симулятор подделывает мост SDK и хром контейнера.** Он не подделывает
+  распределение рекламы и ревью, поэтому зелёный прогон означает «механика
+  работает в контейнере такой формы», а не «это пройдёт модерацию».
+- **Креатив не измерен.** Тайминг и механика следуют опубликованным бенчмаркам,
+  но playable для утверждения об установках нужны настоящие показы. Два
+  варианта хука существуют как гипотезы, а не как результаты.
 
-## Quick start
+## Быстрый старт
 
 ```bash
 npm install
-npm run check        # typecheck, unit tests, and the spec-checked build
-npm run simulator    # build the playable, then serve the simulator at :5174
+npm run check        # typecheck, юнит-тесты и сборка с проверкой спецификаций
+npm run simulator    # собрать креатив и поднять симулятор на :5174
 ```
 
-Then open http://localhost:5174, pick a network, and press **Reload unit**.
+Затем открыть http://localhost:5174, выбрать сеть и нажать **Reload unit**.
 
-## Using the SDK
+Прогон в браузере — отдельной командой, потому что ему нужен работающий
+симулятор:
 
-A game never imports an ad network. It gets one object and calls it:
+```bash
+npm run smoke
+```
+
+## Как пользоваться SDK
+
+Игра никогда не импортирует SDK рекламной сети. Она получает один объект:
 
 ```ts
 import { createPlayble } from '@playble/core';
@@ -63,58 +70,56 @@ const playable = createPlayble({
   adapters: createAllAdapters(),
 });
 
-playable.on('ctaTap', ({ via }) => console.log('installed via', via));
+playable.on('ctaTap', ({ via }) => console.log('установлено через', via));
 
-// ...in game code, when the install button is pressed:
+// ...в коде игры, когда игрок нажал кнопку установки:
 playable.install();
 ```
 
-`install()` routes to whatever the current network expects: `mraid.open()`,
-`FbPlayableAd.onCTAClick()`, `ExitApi.exit()`, `window.install()`, or a plain
-link when no network SDK is present.
+`install()` сам выбирает нужный вызов: `mraid.open()`, `FbPlayableAd.onCTAClick()`,
+`ExitApi.exit()`, `window.install()` или обычная ссылка, если SDK сети нет.
 
-## Network support
+## Поддержка сетей
 
-| Network | Store exit | Size cap | MRAID | Audio |
+| Сеть | Выход в магазин | Лимит | MRAID | Звук |
 |---|---|---|---|---|
-| Meta, Moloco | `FbPlayableAd.onCTAClick()` | 2 MB | **forbidden** | gesture |
-| Google / AdMob | `ExitApi.exit()` | 5 MB | not used | gesture |
-| AppLovin MAX | `mraid.open()` | 5 MB | required | gesture |
-| Unity Ads | `mraid.open()` | 5 MB | required | gesture |
-| IronSource / LevelPlay | `mraid.open()` | 5 MB | required | gesture |
-| Vungle | `mraid.open()` | 5 MB | required | gesture |
-| Chartboost, InMobi | `mraid.open()` | not published | required | gesture |
-| Mintegral | `window.install()` | 5 MB | not used | gesture |
-| TikTok, Pangle | `window.openAppStore()` | 5 MB | not used | **on** |
-| Liftoff | `postMessage("download")` | 700 KB advised | not used | gesture |
-| none detected | `window.open` | — | — | gesture |
+| Meta, Moloco | `FbPlayableAd.onCTAClick()` | 2 МБ | **запрещён** | по жесту |
+| Google / AdMob | `ExitApi.exit()` | 5 МБ | не используется | по жесту |
+| AppLovin MAX | `mraid.open()` | 5 МБ | обязателен | по жесту |
+| Unity Ads | `mraid.open()` | 5 МБ | обязателен | по жесту |
+| IronSource / LevelPlay | `mraid.open()` | 5 МБ | обязателен | по жесту |
+| Vungle | `mraid.open()` | 5 МБ | обязателен | по жесту |
+| Chartboost, InMobi | `mraid.open()` | не указан | обязателен | по жесту |
+| Mintegral | `window.install()` | 5 МБ | не используется | по жесту |
+| TikTok, Pangle | `window.openAppStore()` | 5 МБ | не используется | **включён** |
+| Liftoff | `postMessage("download")` | 700 КБ рекомендуется | не используется | по жесту |
+| сеть не найдена | `window.open` | — | — | по жесту |
 
-Two details in that table drive real design decisions, and both are explained
-where they are implemented:
+Две детали в этой таблице определяют реальные решения в коде:
 
-- **Meta forbids MRAID outright.** Not "unused MRAID" — the string anywhere in
-  the file. So `apps/playable` ships three separate bundles and the Meta one
-  never imports the MRAID adapter. See `apps/playable/src/targets/`.
-- **MRAID networks are indistinguishable at runtime.** AppLovin, Unity,
-  IronSource and Vungle all expose MRAID and little else. Detection cannot tell
-  them apart, so units get pinned with `config.network`. See
+- **Meta запрещает MRAID полностью** — не «неиспользуемый», а любое упоминание в
+  файле. Поэтому в `apps/playable` три отдельные сборки, и в Meta-версии адаптер
+  MRAID не импортируется вообще. См. `apps/playable/src/targets/`.
+- **MRAID-сети неразличимы на рантайме.** AppLovin, Unity, IronSource и Vungle
+  дают MRAID и почти ничего больше. Определить конкретную сеть нельзя, поэтому
+  юниты закрепляются через `config.network`. См.
   `packages/adapters/src/networks.ts`.
 
-## The simulator
+## Симулятор
 
-`npm run simulator` serves the built playable inside a fake container with the
-selected network's SDK injected, and logs every call it makes. A CTA that exits
-through the wrong API, or that sits under the network's own chrome, is visible
-immediately rather than in an upload review.
+`npm run simulator` грузит собранный playable в фейковый контейнер с
+подставленным SDK выбранной сети и логирует все его вызовы. CTA, который уходит
+не через тот API или который перекрыт хромом самой сети, видно сразу, а не на
+ревью загрузки.
 
-It loads the real built artefact, not a dev build, so size and inline-asset
-behaviour are covered too.
+Загружается именно собранный артефакт, а не dev-сборка игры: размер и инлайн
+ассетов — как раз то, что приводит к отклонению, и в dev-сборке этого не видно.
 
-## Validation
+## Валидация
 
-`npm run build` produces one artefact per network family and checks each against
-every network's spec: file size, external requests, external scripts, MRAID
-usage, and the required store-exit call. Failures fail the build.
+`npm run build` собирает по артефакту на семейство сетей и проверяет каждый
+против требований всех сетей: размер файла, внешние запросы, внешние скрипты,
+использование MRAID и обязательный вызов выхода. Ошибка роняет сборку.
 
 ```
 [playble] checking meta.html (592.7 KB) for Meta and Moloco
@@ -122,36 +127,85 @@ meta.html  592.7 KB
 OK accepted by: Unity Ads
 ```
 
-The check is deliberately limited to what can be proven from the file. Whether
-the creative itself is good is not something a static check can answer.
+Проверка намеренно ограничена тем, что доказуемо из самого файла. Хорош ли
+креатив — статическая проверка не ответит.
 
-## Documentation
+## Документация
 
-- [`docs/architecture.md`](docs/architecture.md) — how the pieces fit and why
-- [`docs/adr/`](docs/adr/) — the decisions worth arguing about, with reasons
-- [`docs/playable-design.md`](docs/playable-design.md) — the creative side: timing, mechanics, and what the benchmarks say
+- [`docs/architecture.md`](docs/architecture.md) — как всё устроено и почему
+- [`docs/adr/`](docs/adr/) — решения, которые стоит обсуждать, с обоснованием
+- [`docs/playable-design.md`](docs/playable-design.md) — творческая часть: тайминг, механика и что говорят бенчмарки
 
-## Roadmap
+## Скриншоты
 
-Open issues carry the reasoning, not just the task:
+Демо-креатив на третьем уровне: доска живая, кнопка установки ещё не появилась.
 
-- [Playwright E2E for the simulator](https://github.com/Kerarty/playble-ads/issues/2)
-- [Measure the two hook variants](https://github.com/Kerarty/playble-ads/issues/3)
-- [Publish the simulator to Pages](https://github.com/Kerarty/playble-ads/issues/4)
-- [Real containers vs the simulator](https://github.com/Kerarty/playble-ads/issues/5)
-- [Attribute analytics to the serving network](https://github.com/Kerarty/playble-ads/issues/6)
+![Демо-креатив, уровень 3](docs/images/playable-level.png)
 
-## Tests
+Энд-кард после победы. Кнопка появляется только после выигрыша — это требование
+тайминга, а не украшение.
+
+![Энд-кард с кнопкой установки](docs/images/playable-cta.png)
+
+Симулятор в MRAID-контейнере: каждый вызов SDK, который сделал playable,
+и фактический способ выхода.
+
+![Симулятор, MRAID-контейнер](docs/images/simulator-mraid.png)
+
+## Дорожная карта
+
+Открытые задачи содержат обоснование, а не только формулировку:
+
+- [E2E на Playwright для симулятора](https://github.com/Kerarty/playble-ads/issues/2)
+- [Измерить два варианта хука](https://github.com/Kerarty/playble-ads/issues/3)
+- [Выложить симулятор на GitHub Pages](https://github.com/Kerarty/playble-ads/issues/4)
+- [Реальные контейнеры против симулятора](https://github.com/Kerarty/playble-ads/issues/5)
+- [Атрибуция метрик к отдающей сети](https://github.com/Kerarty/playble-ads/issues/6)
+
+## Тесты
 
 ```bash
-npm test
+npm test        # юнит-тесты, без браузера
+npm run smoke   # прогон настоящей сборки в настоящем браузере
 ```
 
-Unit tests cover the parts that can actually be wrong: merge rules, level
-solvability, the fixed-timestep loop, config validation, network detection and
-resolution, and the spec checker itself. Game rules live in code that does not
-import the renderer, which is why they are testable without a browser.
+`npm test` покрывает то, что может сломаться без рендерера: правила слияния,
+решаемость уровней, геометрия доски, цикл с фиксированным шагом, валидация
+конфига, определение и выбор сети, сама проверка спецификаций. Правила игры
+живут в коде, который не импортирует Pixi, поэтому проверяются без браузера.
 
-## License
+`npm run smoke` нужен потому, что целый класс багов юнит-тестами не ловится
+вообще. Он открывает собранный юнит в Chrome, играет в него настоящими
+событиями указателя по экранным координатам и проверяет:
+
+- рендерер и DOM-оверлеи показывают блок в одной точке (иначе картинка верная,
+  а нажатия игнорируются);
+- доска помещается в дизайн-бокс и клетка остаётся достаточно крупной, чтобы
+  попасть пальцем;
+- раунд доигрывается до CTA в четырёх размерах слота;
+- каждая из шести сетей выходит через свой API.
+
+Все четыре бага, описанных ниже, нашлись именно так. Запускается против
+`npm run simulator`, браузер берётся системный, ничего не докачивается.
+
+## Что нашлось при прогоне в браузере
+
+Четыре настоящих бага, которые юнит-тесты пропустили:
+
+1. **Доска вставала в тупик.** Слияние съедает два блока и даёт один, пары
+   кончались, и на доске оставались свободные клетки без возможности что-либо
+   слить. Тест на решаемость гонял 60 сидов и не поймал.
+2. **`get()` не проверял границы.** `Board.index` — обычная арифметика, поэтому
+   `get(4, 0)` перескакивал на индекс 4, то есть на блок Directly ниже. Клетка
+   у правого края считала, что у неё есть сосед слева, и долив ставил блоки не
+   туда. Ничего не падало — доска просто переставала иметь смысл.
+3. **Одинокая блок-долив.** Когда нулевых блоков не оставалось совсем, правило
+   ставило один-единственный нулевой блок в случайную клетку. Сливать его не с
+   чем. Теперь ставится пара.
+4. **Геометрия мира считалась не туда.** Блоки уезжали в левый верхний угол, а
+   ввод продолжал работать, потому что идёт через transform DOM-оверлея. Два
+   разных набора координат, сломан был один, и исключение не бросалось.
+
+## Лицензия
 
 MIT
