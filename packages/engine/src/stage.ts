@@ -11,16 +11,15 @@
  * converts at exactly zero.
  */
 import { Application, Container } from 'pixi.js';
-import type { DesignSize } from './viewport.js';
 
 export interface StageHandle {
   app: Application;
   /**
-   * Root container for game content.
+   * Root container for game content, in design-space coordinates.
    *
-   * Left unscaled on purpose. The caller owns the design-space to backbuffer
-   * transform, because the backbuffer size depends on the adaptive quality
-   * controller and this module does not know about it.
+   * The caller owns this container's transform, because the mapping from design
+   * space to backbuffer pixels depends on the viewport and the adaptive quality
+   * controller, neither of which this module knows about.
    */
   world: Container;
   /** Resizes the backbuffer. Does not touch the canvas CSS box. */
@@ -29,8 +28,7 @@ export interface StageHandle {
 }
 
 export interface StageOptions {
-  design: DesignSize;
-  /** CSS size of the host element. */
+  /** CSS size of the slot the playable was delivered into. */
   width: number;
   height: number;
   /** Background alpha, so the page behind the canvas can show through. */
