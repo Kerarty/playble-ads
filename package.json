@@ -1,0 +1,31 @@
+{
+  "name": "playble-ads",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Engine-agnostic SDK for HTML5 playable ads, with adapters for the major ad networks.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc --build && npm run build --workspace=apps/playable",
+    "build:simulator": "npm run build --workspace=apps/simulator",
+    "simulator": "node scripts/run-simulator.mjs",
+    "dev": "npm run dev --workspace=apps/playable",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

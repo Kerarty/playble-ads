@@ -1,0 +1,25 @@
+node_modules/
+dist/
+dist-*/
+dist-types/
+.turbo/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test output
+coverage/
+test-results/
+playwright-report/
+
+# Playable copies, produced by `npm run simulator`. Rebuildable, and about
+# 600 KB each; committing them would put three near-identical bundles in history.
+apps/simulator/public/playable*.html

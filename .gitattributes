@@ -1,0 +1,11 @@
+# Normalise line endings in the repository rather than in every checkout.
+#
+# Windows checkouts would otherwise rewrite every file to CRLF on commit, which
+# turns a one-line change into a whole-file diff and makes history unreadable.
+
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.woff2 binary

@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/adapters" },
+    { "path": "./packages/engine" },
+    { "path": "./tools/spec-check" },
+    { "path": "./apps/playable" },
+    { "path": "./apps/simulator" }
+  ]
+}
