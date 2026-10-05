@@ -1,0 +1,17 @@
+{
+  "name": "@playble/spec-check",
+  "version": "1.0.0",
+  "description": "Validates a built playable against the specs of every supported ad network.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "playble-spec-check": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@playble/core": "1.0.0"
+  }
+}
+
