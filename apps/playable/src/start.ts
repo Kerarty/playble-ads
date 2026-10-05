@@ -15,6 +15,7 @@
  * in a unit nobody is watching while they debug.
  */
 import './style.css';
+import type { Container } from 'pixi.js';
 import { createPlayble, type Adapter, type NetworkId, type Playable } from '@playble/core';
 import { AdaptiveQuality, Tweens, Viewport, createLoop, createStage } from '@playble/engine';
 import { Scene } from './game/scenes.js';
@@ -75,7 +76,7 @@ export async function startPlayable(options: StartOptions): Promise<void> {
 
   viewport.measure(host);
 
-  const scene = new Scene(stage.world, tweens);
+  const scene = new Scene(stage.world, tweens, viewport.design.width, viewport.design.height);
   const audio = new AudioBus({ mode: playable.config.audio, volume: playable.config.volume });
 
   /**
@@ -177,9 +178,17 @@ export async function startPlayable(options: StartOptions): Promise<void> {
       case 'start-level':
         loadLevel(action.index);
         break;
+
+      // A sanity check rather than a normal beat: if the board has no merge
+      // available at a moment the script expects one, top it up. The rules
+      // already prevent this, so it only fires if a level layout is edited into
+      // something unsolvable - in which case the ad would otherwise sit there
+      // looking broken.
       case 'hint-merge':
+        scene.ensurePlayable();
         scene.hintFirstPair(action.tier);
         break;
+
       case 'celebrate':
         scene.celebrate();
         copy.celebrate();
@@ -229,13 +238,29 @@ export async function startPlayable(options: StartOptions): Promise<void> {
     const design = viewport.design;
     const fit = viewport.fitted;
 
-    // Backbuffer pixels per CSS pixel. The quality controller scales the
-    // backbuffer without changing the slot, so this is not always 1.
+    /**
+     * The world transform maps design space onto the backbuffer.
+     *
+     * A design point has to arrive on screen at `fit.x + designX * fit.scale`
+     * CSS pixels, and the canvas element then stretches its backbuffer over the
+     * slot. Composing the two, the factor that maps design space onto backbuffer
+     * pixels is:
+     *
+     *     fit.scale * (backbuffer.width / slot.width)
+     *
+     * which is the device pixel ratio times the fit scale. Getting this wrong is
+     * invisible from inside the game - nothing throws, the input still works,
+     * because input goes through the DOM overlay's transform - so the picture
+     * just drifts off-centre. `measureDrift()` compares the two systems.
+     */
     const toBackbuffer = backbuffer.width / slot.width;
-
     stage.world.scale.set(fit.scale * toBackbuffer);
     stage.world.x = fit.x * toBackbuffer;
     stage.world.y = fit.y * toBackbuffer;
+
+    // The grid follows the design box, so it stays centred and keeps a sane
+    // cell size whatever the slot looks like.
+    scene.setDesignSize(design.width, design.height);
 
     // Overlays live in design space, so the CTA and the copy land in the same
     // place in a 320x480 slot as in a full-screen one.
@@ -254,10 +279,24 @@ export async function startPlayable(options: StartOptions): Promise<void> {
   refit();
 
   // --- loop ------------------------------------------------------------
+  let idleCheckAt = 0;
+
   const loop = createLoop({
-    fixedUpdate: (stepMs) => {
+    fixedUpdate: (stepMs, elapsed) => {
       tweens.update(stepMs);
       director.update();
+
+      // Watchdog for a dead board.
+      //
+      // The merge rules keep the board playable after every change, so this
+      // should never fire. It exists because every other guard depends on the
+      // player acting: a board that ends up with nothing mergeable simply sits
+      // there while the script runs out of beats, and the ad looks frozen. Once a
+      // second, top it up.
+      if (elapsed - idleCheckAt > 1000) {
+        idleCheckAt = elapsed;
+        scene.ensurePlayable();
+      }
     },
     render: () => {
       stage.app.render();
@@ -332,6 +371,50 @@ export async function startPlayable(options: StartOptions): Promise<void> {
 
   // An ad can be destroyed mid-view by the network. A leaked rAF loop would keep
   // the audio context alive and drain a phone battery.
+  /**
+   * Compares where the canvas drew a point against where the DOM overlay says
+   * it should be.
+   *
+   * The renderer and the overlays are two independent coordinate systems that
+   * have to agree, and nothing throws when they do not: the game looks plausible
+   * and only feels wrong. Exposed for the E2E run in `apps/simulator`, which
+   * asserts this is zero, so the class of bug cannot come back unnoticed.
+   */
+  function measureDrift(): { driftPx: number; design: { x: number; y: number } } | null {
+    const overlay = overlayLayer.getBoundingClientRect();
+    if (overlay.width === 0 || overlay.height === 0) return null;
+
+    const designBox = viewport.design;
+    const designPoint = { x: designBox.width / 2, y: designBox.height / 2 };
+    const expected = {
+      x: overlay.left + (designPoint.x / designBox.width) * overlay.width,
+      y: overlay.top + (designPoint.y / designBox.height) * overlay.height,
+    };
+
+    // Same point through the Pixi tree.
+    let x = designPoint.x;
+    let y = designPoint.y;
+    let node: Container | null = stage.world;
+    while (node) {
+      x = x * node.scale.x + node.x;
+      y = y * node.scale.y + node.y;
+      node = node.parent as Container | null;
+    }
+
+    // The canvas element is stretched from its backbuffer to its CSS box, so a
+    // backbuffer coordinate reaches the screen scaled by cssWidth / backbufferWidth.
+    const canvasBox = stage.app.canvas.getBoundingClientRect();
+    const factor = canvasBox.width / stage.app.canvas.width;
+
+    return {
+      driftPx: Math.hypot(
+        expected.x - canvasBox.left - x * factor,
+        expected.y - canvasBox.top - y * factor,
+      ),
+      design: designPoint,
+    };
+  }
+
   function destroy(): void {
     loop.stop();
     input.detach();
@@ -349,7 +432,7 @@ export async function startPlayable(options: StartOptions): Promise<void> {
 
   // Handles for the simulator's E2E run and for devtools poking.
   Object.assign(window as unknown as Record<string, unknown>, {
-    __playble: { destroy, playable, scene, input, director, boot: { target, variant } },
+    __playble: { destroy, playable, scene, input, director, measureDrift, boot: { target, variant } },
   });
 }
 

@@ -49,7 +49,24 @@ describe('createLoop', () => {
     clock.tick(FIXED_STEP_MS);
 
     expect(fixed).toHaveBeenCalledTimes(1);
-    expect(fixed).toHaveBeenCalledWith(FIXED_STEP_MS);
+    expect(fixed).toHaveBeenCalledWith(FIXED_STEP_MS, FIXED_STEP_MS);
+  });
+
+  it('passes a running total, so callers can act on a wall-clock interval', () => {
+    const seen: number[] = [];
+    const clock = fakeClock();
+    const loop = createLoop({
+      ...clock,
+      fixedUpdate: (_step, elapsed) => seen.push(elapsed),
+      render: vi.fn(),
+    });
+
+    loop.start();
+    clock.tick(FIXED_STEP_MS * 4);
+
+    expect(seen).toHaveLength(4);
+    expect(seen[0]).toBeCloseTo(FIXED_STEP_MS, 6);
+    expect(seen[3]).toBeCloseTo(FIXED_STEP_MS * 4, 6);
   });
 
   it('takes several steps for a long frame', () => {

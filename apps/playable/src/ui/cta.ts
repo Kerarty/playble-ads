@@ -160,12 +160,14 @@ export interface DebugHandle {
 export function createDebug(root: HTMLElement): DebugHandle {
   const panel = document.createElement('pre');
   panel.className = 'playble-debug';
-  panel.hidden = true;
   root.append(panel);
 
   return {
     setText(text) {
+      // Content and visibility together: writing text into a hidden node is not
+      // a substitute for showing it, which is why this panel stayed blank.
       panel.textContent = text;
+      panel.hidden = text === '';
     },
     dispose() {
       panel.remove();

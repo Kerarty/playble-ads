@@ -5,32 +5,31 @@
  * deliberately dumb: press, move, release. No gestures, no multi-touch, no
  * physics.
  *
- * The one piece of real logic here is magnetism. A merge game where you have to
- * land a block within a few pixels of its partner is miserable on a phone, and
- * a playable loses the player in two seconds. So a released block snaps to the
- * nearest valid target within a radius well beyond the cell size, and a tap with
- * no drag is treated as "merge with the highlighted partner".
+ * Two things here are less obvious than they look:
  *
- * Feedback budget: a press has to produce a visible response within 200ms or
- * it reads as broken, so the block scales up on press and shows a target ring
- * immediately - before the player has decided where to drop.
+ * 1. Grid resolution goes through `boardLayout`, the same module the renderer
+ *    draws from. When these two disagreed the game looked perfect and simply
+ *    ignored taps, because the cell the player touched was not the cell the
+ *    blocks were drawn in.
+ *
+ * 2. A released block snaps to the nearest valid target within a radius well
+ *    beyond the cell, and a tap with no drag merges with the hinted partner. A
+ *    merge game that demands pixel accuracy is miserable on a phone, and a
+ *    playable loses the player in two seconds.
  */
 import { Easing, type Tweens } from '@playble/engine';
 import type { Scene } from './scenes.js';
+import { cellAt, cellCenter, type Layout } from './boardLayout.js';
 import { COLS, ROWS } from './board.js';
 
-/** Design-space geometry, mirrored from the scene. */
-const BOARD_TOP = 300;
-const BOARD_LEFT = 60;
-const CELL = 140;
-
 /**
- * Snap radius in design pixels.
- *
- * Larger than one cell on purpose: forgiving drops are the difference between a
- * playable that reads as responsive and one that feels broken.
+ * How far from a cell centre a drop still counts as landing on it, in design
+ * pixels. Larger than a cell on purpose: forgiving drops are the difference
+ * between a playable that reads as responsive and one that feels broken.
  */
-const SNAP_RADIUS = CELL * 1.15;
+function snapRadius(layout: Layout): number {
+  return layout.cell * 1.15;
+}
 
 export interface InputCallbacks {
   /** A merge happened. */
@@ -39,14 +38,6 @@ export interface InputCallbacks {
   onFirstInteraction(action: string): void;
   /** The player dropped a block somewhere with no valid target. */
   onInvalidDrop(): void;
-}
-
-export interface DragTarget {
-  id: number;
-  col: number;
-  row: number;
-  /** Blocks that can legally merge with this one. */
-  mergeable: number[];
 }
 
 export interface DragState {
@@ -60,7 +51,7 @@ export interface DragState {
 }
 
 export class InputController {
-  private readonly unsubscribe: (() => void)[];
+  private readonly unsubscribes: Array<() => void> = [];
   private activeId: number | null = null;
   private pressX = 0;
   private pressY = 0;
@@ -78,9 +69,7 @@ export class InputController {
     private readonly tweens: Tweens,
     private readonly toDesign: (clientX: number, clientY: number) => { x: number; y: number },
     private readonly callbacks: InputCallbacks,
-  ) {
-    this.unsubscribe = [];
-  }
+  ) {}
 
   /** Attaches listeners. Pointer events only: one input model for all devices. */
   attach(): void {
@@ -108,7 +97,7 @@ export class InputController {
     window.addEventListener('pointerup', this.onPointerUp);
     window.addEventListener('pointercancel', this.onPointerUp);
 
-    this.unsubscribe.push(
+    this.unsubscribes.push(
       () => canvas.removeEventListener('pointerdown', this.onPointerDown!),
       () => window.removeEventListener('pointermove', this.onPointerMove!),
       () => window.removeEventListener('pointerup', this.onPointerUp!),
@@ -117,8 +106,8 @@ export class InputController {
   }
 
   detach(): void {
-    for (const off of this.unsubscribe) off();
-    this.unsubscribe.length = 0;
+    for (const off of this.unsubscribes) off();
+    this.unsubscribes.length = 0;
   }
 
   get state(): DragState {
@@ -126,7 +115,8 @@ export class InputController {
       activeId: this.activeId,
       x: this.pointerX,
       y: this.pointerY,
-      willLand: this.activeId === null ? null : this.nearestTarget(this.activeId, this.pointerX, this.pointerY)?.[1] ?? null,
+      willLand:
+        this.activeId === null ? null : (this.nearestTarget(this.activeId, this.pointerX, this.pointerY)?.[1] ?? null),
     };
   }
 
@@ -151,10 +141,9 @@ export class InputController {
 
     this.activeId = block.id;
 
-    // Press feedback, immediately: scale up and lift slightly. This is the
-    // sub-200ms response the creative needs to read as responsive.
-    const view = this.scene.view(block.id);
-    view?.press(this.tweens);
+    // Press feedback, immediately: the sub-200ms response the creative needs in
+    // order to read as responsive.
+    this.scene.view(block.id)?.press(this.tweens);
   }
 
   private pointerMove(ev: PointerEvent): void {
@@ -182,9 +171,11 @@ export class InputController {
 
     const target = this.nearestTarget(sourceId, x, y);
 
-    // A tap, or a tiny drag, with a highlighted partner: merge with it.
-    // One gesture, both input styles - that is what "one action" has to mean.
-    if (dragged < 12) {
+    // A tap, or a tiny drag, with a highlighted partner: merge with it. One
+    // gesture, both input styles - that is what "one action" has to mean.
+    // The threshold scales with the cell so it is the same physical distance
+    // whatever the slot size.
+    if (dragged < this.scene.currentLayout.cell * 0.12) {
       const partner = this.scene.hintPartnerFor(sourceId);
       if (partner) {
         this.commit(sourceId, partner.col, partner.row);
@@ -193,7 +184,7 @@ export class InputController {
     }
 
     if (!target) {
-      const cell = this.cellOf(sourceId);
+      const cell = this.scene.cellOf(sourceId);
       if (cell) {
         const center = this.scene.cellCenter(cell[0], cell[1]);
         this.scene.view(sourceId)?.release(this.tweens, center.x, center.y);
@@ -215,23 +206,21 @@ export class InputController {
     }
 
     this.moves += 1;
-    const tier = this.scene.tierAt(col, row);
-    this.callbacks.onMerge(tier ?? 0, this.moves);
+    this.callbacks.onMerge(this.scene.tierAt(col, row) ?? 0, this.moves);
   }
 
   /** The block under a design-space point. */
   blockAt(x: number, y: number): { id: number; col: number; row: number } | null {
-    const col = Math.floor((x - BOARD_LEFT) / CELL);
-    const row = Math.floor((y - BOARD_TOP) / CELL);
-    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+    const cell = cellAt(this.scene.currentLayout, x, y);
+    if (!cell) return null;
 
-    const block = this.scene.board.get(col, row);
+    const block = this.scene.board.get(cell.col, cell.row);
     if (!block) return null;
-    return { id: block.id, col, row };
+    return { id: block.id, col: cell.col, row: cell.row };
   }
 
   /**
-   * Finds the best landing spot: an empty cell, or a mergeable neighbour.
+   * Finds the best landing spot: a mergeable neighbour, or any neighbour.
    * Prefers mergeable, because that is the move the player almost always means.
    */
   nearestTarget(
@@ -242,19 +231,24 @@ export class InputController {
     const source = this.scene.boardOf(sourceId);
     if (!source) return null;
 
+    const layout = this.scene.currentLayout;
+    const limit = snapRadius(layout);
+
     let best: [{ id: number; col: number; row: number }, [number, number], number] | null = null;
 
     for (const [col, row] of this.scene.board.neighbours(source)) {
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) continue;
+
       const target = this.scene.board.get(col, row);
       if (!target) continue;
 
-      const canMerge = source.tier === target.tier && source.tier < 5;
+      const canMerge = this.scene.board.canMerge(source, target);
       // A merge is always worth more than a plain move, so bias its distance.
       const bias = canMerge ? 0.55 : 1;
-      const center = this.scene.cellCenter(col, row);
+      const center = cellCenter(layout, col, row);
       const distance = Math.hypot(center.x - x, center.y - y) * bias;
 
-      if (distance > SNAP_RADIUS) continue;
+      if (distance > limit) continue;
       if (!best || distance < best[2]) {
         best = [{ id: target.id, col, row }, [col, row], distance];
       }
@@ -263,11 +257,7 @@ export class InputController {
     if (!best) return null;
     return [best[0], best[1]];
   }
-
-  private cellOf(blockId: number): [number, number] | null {
-    return this.scene.cellOf(blockId);
-  }
 }
 
-/** Easing re-export so the game does not import the engine twice. */
+/** Re-exported so the game does not import the engine twice. */
 export { Easing };

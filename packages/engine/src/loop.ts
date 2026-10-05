@@ -23,8 +23,13 @@ export const MAX_CATCHUP_STEPS = 5;
 const STEP_EPSILON_MS = 1e-6;
 
 export interface LoopCallbacks {
-  /** Advance the simulation by exactly `stepMs`. */
-  fixedUpdate(stepMs: number): void;
+  /**
+   * Advance the simulation by exactly `stepMs`.
+   *
+   * `elapsedMs` is the total simulated time so far, for logic that wants to run
+   * on a wall-clock interval rather than every step.
+   */
+  fixedUpdate(stepMs: number, elapsedMs: number): void;
   /** Draw one frame. `alpha` is where we are between the last two sim steps. */
   render(alpha: number): void;
 }
@@ -79,9 +84,9 @@ export function createLoop(options: LoopOptions): LoopHandle {
     // step size - and a naive comparison silently drops the third step. A real
     // renderer would jitter at that boundary.
     while (accumulator + STEP_EPSILON_MS >= FIXED_STEP_MS && steps < MAX_CATCHUP_STEPS) {
-      options.fixedUpdate(FIXED_STEP_MS);
       accumulator -= FIXED_STEP_MS;
       elapsed += FIXED_STEP_MS;
+      options.fixedUpdate(FIXED_STEP_MS, elapsed);
       steps += 1;
     }
 

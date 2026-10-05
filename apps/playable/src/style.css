@@ -37,10 +37,9 @@ body {
 /* --- design-space overlay layer ---------------------------------------- */
 
 /*
- * Children are laid out in 720x1280 design pixels; `refit()` positions and
- * scales this layer to match the fitted design box. The layer itself must not
- * eat pointer events, or dragging a block that passes under the copy overlay
- * would break.
+ * Children are laid out in design pixels, and refit() positions and scales this
+ * layer to the fitted design box. The layer itself must not eat pointer events,
+ * or dragging a block that passes under the copy overlay would break.
  */
 .playble-overlay {
   position: absolute;
@@ -54,7 +53,7 @@ body {
 
 .playble-copy {
   position: absolute;
-  top: 9%;
+  top: 7%;
   left: 50%;
   transform: translateX(-50%);
   width: 92%;

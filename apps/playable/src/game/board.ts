@@ -93,6 +93,19 @@ export class Board {
     return this.occupiedCount === 0;
   }
 
+  /**
+   * Every block currently on the board.
+   *
+   * Used by the scene to reposition views when the design box changes shape, so
+   * the block positions stay derived from the layout rather than remembered per
+   * view.
+   */
+  blocks(): Block[] {
+    const out: Block[] = [];
+    for (const cell of this.cells) if (cell) out.push(cell);
+    return out;
+  }
+
   /** Empty cells as [col, row] pairs, shuffled so spawns are not predictable. */
   emptyCells(random: () => number = Math.random): Array<[number, number]> {
     const out: Array<[number, number]> = [];

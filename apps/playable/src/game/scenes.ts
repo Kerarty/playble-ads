@@ -21,14 +21,8 @@
 import { Container, Graphics, Text } from 'pixi.js';
 import { Easing, Pool, type Tweens } from '@playble/engine';
 import { Board, CELL_COUNT, COLS, ROWS, type Block, type Tier } from './board.js';
+import { COLS as LAYOUT_COLS, GAP, cellCenter, computeLayout, type Layout } from './boardLayout.js';
 import { paletteFor } from './palette.js';
-
-/** Where the grid sits in design space (720x1280). */
-const BOARD_TOP = 300;
-const BOARD_LEFT = 60;
-const CELL = 140;
-const GAP = 8;
-const CELL_SIZE = CELL - GAP * 2;
 
 export interface SceneMetrics {
   blocks: number;
@@ -38,6 +32,12 @@ export interface SceneMetrics {
 
 export class Scene {
   readonly board = new Board();
+
+  /**
+   * Grid geometry. Recomputed whenever the design box changes shape, so the
+   * board stays centred and keeps a sane cell size in any slot.
+   */
+  private layout: Layout;
 
   private readonly blockLayer = new Container();
   private readonly fxLayer = new Container();
@@ -49,7 +49,9 @@ export class Scene {
   private draggedId: number | null = null;
   private metrics: SceneMetrics = { blocks: 0, viewsCreated: 0 };
 
-  constructor(world: Container, private readonly tweens: Tweens) {
+  constructor(world: Container, private readonly tweens: Tweens, designWidth = 720, designHeight = 1280) {
+    this.layout = computeLayout(designWidth, designHeight);
+
     this.pool = new Pool<BlockView>(
       () => {
         const view = new BlockView();
@@ -69,14 +71,16 @@ export class Scene {
     this.cancelDrag();
     this.clearBlocks();
 
+    const size = this.layout.cell - GAP * 2;
+
     layout.forEach((line, row) => {
       [...line].forEach((ch, col) => {
         if (ch === '.') return;
         const block = this.board.spawn(Number(ch) as Tier, col, row);
         const view = this.pool.get();
         const center = this.cellCenter(col, row);
-        view.show(block, center.x, center.y);
-        view.popIn(this.tweens, staggerMs * (row * COLS + col));
+        view.show(block, center.x, center.y, size);
+        view.popIn(this.tweens, staggerMs * (row * LAYOUT_COLS + col));
         this.views.set(block.id, view);
       });
     });
@@ -84,11 +88,43 @@ export class Scene {
     this.metrics.blocks = this.views.size;
   }
 
+  /**
+   * Recentres the grid and redraws every block at the new cell size.
+   *
+   * Called when the design box changes shape. Positions come from the layout
+   * rather than from each view's remembered values, so a resize cannot leave a
+   * block stranded at its old coordinates.
+   */
+  setDesignSize(width: number, height: number): void {
+    const next = computeLayout(width, height);
+    if (next.cell === this.layout.cell && next.left === this.layout.left && next.top === this.layout.top) {
+      return;
+    }
+    this.layout = next;
+
+    for (const block of this.board.blocks()) {
+      const center = cellCenter(this.layout, block.col, block.row);
+      this.views.get(block.id)?.place(center.x, center.y, this.layout.cell - GAP * 2);
+    }
+  }
+
   cellCenter(col: number, row: number): { x: number; y: number } {
-    return {
-      x: BOARD_LEFT + col * CELL + CELL / 2,
-      y: BOARD_TOP + row * CELL + CELL / 2,
-    };
+    return cellCenter(this.layout, col, row);
+  }
+
+  get currentLayout(): Layout {
+    return this.layout;
+  }
+
+  /**
+   * Tops the board up when nothing can be merged.
+   *
+   * Public because the boot script calls it before pointing the tutorial hint at
+   * a pair: a layout edited into something unsolvable would otherwise leave the
+   * ad sitting on a dead board.
+   */
+  ensurePlayable(random: () => number = Math.random): void {
+    this.refillIfStuck(random);
   }
 
   /** The view for a block, for input code that needs to move it directly. */
@@ -165,6 +201,7 @@ export class Scene {
       const occupant = this.board.get(targetCol, targetRow);
       const home = this.cellCenter(source.col, source.row);
       const view = this.views.get(sourceId);
+
       if (view) {
         if (!occupant) {
           const to = this.cellCenter(targetCol, targetRow);
@@ -173,8 +210,17 @@ export class Scene {
           view.glideTo(this.tweens, home.x, home.y);
         }
       }
+
+      // A plain move can break the board just as a merge can: moving the last
+      // pair apart leaves nothing to merge and free cells to spare, which is an
+      // unwinnable round. The invariant has to hold after every change, not just
+      // after merges.
+      this.refillIfStuck(random);
+
       return false;
     }
+
+    const size = this.layout.cell - GAP * 2;
 
     const [movedId, targetId] = result.consumed;
     this.releaseView(movedId);
@@ -182,28 +228,39 @@ export class Scene {
 
     const view = this.pool.get();
     const center = this.cellCenter(targetCol, targetRow);
-    view.show(result.produced, center.x, center.y);
+    view.show(result.produced, center.x, center.y, size);
     view.popMerge(this.tweens);
     this.views.set(result.produced.id, view);
 
-    this.burst(center, result.produced.tier);
+    this.burst(center, result.produced.tier, size);
     this.bumpNeighbours(targetCol, targetRow, result.produced.id);
 
     // Keep the board playable. A merge consumes two blocks and makes one, so the
     // pairs run out; without this the round dead-ends with free cells and nothing
     // to do, which is the worst possible state in an ad. See
     // `Board.ensurePlayable`.
-    const refill = this.board.ensurePlayable(random);
-    if (refill) {
-      const refillView = this.pool.get();
-      const refillCenter = this.cellCenter(refill.col, refill.row);
-      refillView.show(refill, refillCenter.x, refillCenter.y - CELL / 2);
-      refillView.popIn(this.tweens, 90);
-      this.views.set(refill.id, refillView);
-    }
+    this.refillIfStuck(random);
 
     this.metrics.blocks = this.views.size;
     return true;
+  }
+
+  /**
+   * Adds a block when the board has no merge available, entering from the top of
+   * its cell so it reads as "dropped in" rather than "appeared".
+   *
+   * Called after every board change, not only after merges: a plain move can
+   * separate the last pair just as effectively.
+   */
+  refillIfStuck(random: () => number = Math.random): void {
+    const refill = this.board.ensurePlayable(random);
+    if (!refill) return;
+
+    const view = this.pool.get();
+    const center = this.cellCenter(refill.col, refill.row);
+    view.show(refill, center.x, center.y - this.layout.cell / 2, this.layout.cell - GAP * 2);
+    view.popIn(this.tweens, 90);
+    this.views.set(refill.id, view);
   }
 
   /** Highlights the first mergeable pair and nudges one block toward the other. */
@@ -224,14 +281,21 @@ export class Scene {
     const toward = this.cellCenter(pair[1].col, pair[1].row);
 
     // A small nudge: enough to read as "these two", not so much that the board
-    // looks broken.
+    // looks broken. Capped at a fraction of the distance between cells rather
+    // than a fixed fraction of the way, so it stays subtle in a large cell and
+    // still reads in a small one.
+    const reach = Math.min(this.layout.cell * 0.16, 60);
+
     this.tweens.add({
       durationMs: 460,
       easing: Easing.inOutSine,
       onUpdate: (t) => {
-        const pulse = Math.sin(t * Math.PI) * 0.2;
-        a.root.x = from.x + (toward.x - from.x) * pulse;
-        a.root.y = from.y + (toward.y - from.y) * pulse;
+        const pulse = Math.sin(t * Math.PI);
+        const dx = toward.x - from.x;
+        const dy = toward.y - from.y;
+        const len = Math.hypot(dx, dy) || 1;
+        a.root.x = from.x + (dx / len) * reach * pulse;
+        a.root.y = from.y + (dy / len) * reach * pulse;
       },
       onComplete: () => a.snapTo(from.x, from.y),
     });
@@ -296,11 +360,12 @@ export class Scene {
   }
 
   /** Merge feedback: an expanding ring plus a small particle scatter. */
-  private burst(center: { x: number; y: number }, tier: number): void {
+  /** Merge feedback: an expanding ring plus a small particle scatter. */
+  private burst(center: { x: number; y: number }, tier: Tier, size: number): void {
     const palette = paletteFor(tier);
 
     const ring = new Graphics();
-    ring.circle(0, 0, 22).stroke({ width: 7, color: palette.accent, alpha: 0.95 });
+    ring.circle(0, 0, size * 0.16).stroke({ width: Math.max(3, size * 0.05), color: palette.accent, alpha: 0.95 });
     ring.position.set(center.x, center.y);
     this.fxLayer.addChild(ring);
 
@@ -317,14 +382,17 @@ export class Scene {
     // Ten particles, and each is its own tiny Graphics. One shared particle
     // texture would be smaller in the bundle but needs more code, and the size
     // difference does not matter next to Pixi itself.
+    const dotSize = Math.max(3, size * 0.04);
+    const reach = size * 0.9;
+
     for (let i = 0; i < 10; i += 1) {
       const dot = new Graphics();
-      dot.circle(0, 0, 5).fill(palette.shine);
+      dot.circle(0, 0, dotSize).fill(palette.shine);
       dot.position.set(center.x, center.y);
       this.fxLayer.addChild(dot);
 
       const angle = (i / 10) * Math.PI * 2;
-      const distance = 64 + (i % 3) * 20;
+      const distance = reach * (0.7 + (i % 3) * 0.18);
 
       this.tweens.add({
         durationMs: 380 + (i % 4) * 40,
@@ -374,7 +442,12 @@ export class Scene {
   }
 }
 
-/** One block on screen. Pooled, so it keeps no state between uses. */
+/**
+ * One block on screen. Pooled, so it keeps no state between uses.
+ *
+ * `gap` is passed in rather than imported as a constant because the drawn size
+ * follows the cell size, which adapts to the slot.
+ */
 class BlockView {
   readonly root = new Container();
 
@@ -398,20 +471,8 @@ class BlockView {
     this.root.visible = false;
   }
 
-  show(block: Block, x: number, y: number): void {
-    const palette = paletteFor(block.tier);
-    const half = CELL_SIZE / 2;
-
-    this.body.clear();
-    this.body.roundRect(-half, -half, CELL_SIZE, CELL_SIZE, 22).fill(palette.fill);
-    // A lighter band across the top reads as a highlight and costs two
-    // rectangles instead of a gradient shader.
-    this.body.roundRect(-half, -half, CELL_SIZE, CELL_SIZE * 0.42, 22).fill({ color: palette.light, alpha: 0.32 });
-    this.body.roundRect(-half, -half, CELL_SIZE, CELL_SIZE, 22).stroke({ width: 5, color: palette.dark });
-
-    this.label.text = palette.label;
-    this.label.visible = palette.label !== '';
-    if (palette.label !== '') this.label.style.fill = palette.dark;
+  show(block: Block, x: number, y: number, size: number): void {
+    this.draw(block.tier, size);
 
     this.root.position.set(x, y);
     this.root.scale.set(1);
@@ -419,6 +480,39 @@ class BlockView {
     this.root.visible = true;
     this.hintAlpha = 0;
   }
+
+  /** Repositions and redraws at a new cell size, without touching animation. */
+  place(x: number, y: number, size: number): void {
+    this.root.position.set(x, y);
+    this.draw(this.tier, size);
+  }
+
+  private draw(tier: Tier, size: number): void {
+    const palette = paletteFor(tier);
+    const half = size / 2;
+    const radius = Math.max(6, size * 0.16);
+    const stroke = Math.max(2, size * 0.04);
+
+    this.tier = tier;
+
+    this.body.clear();
+    this.body.roundRect(-half, -half, size, size, radius).fill(palette.fill);
+    // A lighter band across the top reads as a highlight and costs two
+    // rectangles instead of a gradient shader.
+    this.body.roundRect(-half, -half, size, size * 0.42, radius).fill({ color: palette.light, alpha: 0.32 });
+    this.body.roundRect(-half, -half, size, size, radius).stroke({ width: stroke, color: palette.dark });
+
+    this.label.text = palette.label;
+    this.label.visible = palette.label !== '';
+    if (palette.label !== '') {
+      this.label.style.fill = palette.dark;
+      // The label is sized from the cell so it stays proportional.
+      this.label.style.fontSize = Math.round(size * 0.34);
+    }
+  }
+
+  /** Tier currently drawn, so a resize can redraw without being told. */
+  private tier: Tier = 0;
 
   /** Pressed: lift and grow. Must be immediate, it is the game's acknowledgement. */
   press(tweens: Tweens): void {
