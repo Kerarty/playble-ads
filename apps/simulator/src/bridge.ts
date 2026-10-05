@@ -123,9 +123,9 @@ export interface BridgeHandle {
 /**
  * Creates a bridge that reports into `onLog`.
  *
- * The SDK globals are defined as plain functions rather than objects so that a
- * playable using optional chaining on them behaves exactly as it would against
- * a real SDK.
+ * The SDK globals are defined as plain objects rather than something exotic so
+ * that a playable using optional chaining on them behaves exactly as it would
+ * against a real SDK.
  */
 export function createBridge(
   simulation: NetworkSimulation,
@@ -150,7 +150,7 @@ export function createBridge(
 
   return {
     install(target: Window): void {
-      const win = target as unknown as Record<string, unknown>;
+      const win = target as Window & Record<string, unknown>;
 
       switch (simulation.exit) {
         case 'mraid.open': {
@@ -186,13 +186,33 @@ export function createBridge(
           break;
         }
         case 'postMessage': {
-          // The playable posts to its parent, which is this page.
-          win['__liftoffHook'] = () => markExit('postMessage("download")');
+          // Liftoff exits by posting to the *parent* frame, so the listener has
+          // to be on the parent - the simulator page, not the playable's window.
+          // Listening on the child would never fire, which would look exactly
+          // like a broken Liftoff unit.
+          const parentWindow = target.parent;
+          if (parentWindow && parentWindow !== target) {
+            parentWindow.addEventListener('message', (event: MessageEvent) => {
+              if (event.data === 'download') markExit('postMessage("download")');
+            });
+          }
           break;
         }
-        case 'window.open':
+        case 'window.open': {
+          // No SDK exists for this case, so there is nothing to inject. We watch
+          // `open` instead: the plain-HTML fallback calls it, and seeing that call
+          // is the only way to confirm the fallback path actually reaches the
+          // store. Without a spy it navigates the iframe away and the simulator
+          // looks like the unit did nothing.
+          const original = target.open.bind(target);
+          target.open = ((url?: string | URL, ...rest: unknown[]) => {
+            markExit(`window.open(${String(url)})`);
+            return original(url, ...(rest as []));
+          }) as typeof target.open;
+          break;
+        }
+
         default:
-          // Nothing injected. The runtime should fall back on its own.
           break;
       }
 

@@ -183,20 +183,15 @@ function build(): void {
           if (!win) return;
           const bridge = createBridge(SIMULATIONS[state.network], (entry) => {
             state.log.push(entry);
+            // The bridge knows when the playable asked for the store; the badge
+            // reads from it rather than being tracked separately, so the two can
+            // never disagree.
+            state.exit = bridge.exitCall();
             renderLog();
           });
           bridge.install(win);
-
-          if (state.network === 'liftoff') {
-            // Liftoff exits by posting to the parent frame.
-            const parent = frame.contentWindow as unknown as { __liftoffHook?: () => void };
-            if (parent.__liftoffHook) {
-              win.addEventListener('message', () => {
-                state.exit = 'postMessage("download")';
-                renderLog();
-              });
-            }
-          }
+          state.exit = bridge.exitCall();
+          renderLog();
         } catch (error) {
           state.log.push({ at: 0, api: 'simulator', detail: `could not reach the frame: ${String(error)}` });
           renderLog();
