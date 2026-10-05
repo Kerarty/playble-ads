@@ -1,0 +1,23 @@
+{
+  "name": "@playble/adapters",
+  "version": "1.0.0",
+  "description": "Ad network adapters for @playble/core. MRAID, Meta, Google, AppLovin, Unity, TikTok and more.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@playble/core": "1.0.0"
+  }
+}
